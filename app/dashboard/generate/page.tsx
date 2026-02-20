@@ -11,20 +11,23 @@ export type GenerationState = 'upload' | 'job' | 'generating' | 'complete'
 export default function GeneratePage() {
     const [step, setStep] = useState<GenerationState>('upload')
     const [file, setFile] = useState<File | null>(null)
+    const [photo, setPhoto] = useState<string | null>(null)
     const [jobMode, setJobMode] = useState<'url' | 'paste'>('url')
     const [jobValue, setJobValue] = useState('')
-    const [generationId, setGenerationId] = useState<string | null>(null)
+    const [isSubmitting, setIsSubmitting] = useState(false)
 
     const router = useRouter()
 
     const handleGeneration = async () => {
         if (!file || !jobValue) return
+        setIsSubmitting(true)
         setStep('generating')
 
         const formData = new FormData()
         formData.append('file', file)
         formData.append('jobMode', jobMode)
         formData.append(jobMode === 'url' ? 'jobUrl' : 'jobText', jobValue)
+        if (photo) formData.append('photoDataUrl', photo)
 
         try {
             const res = await fetch('/api/generate', {
@@ -33,18 +36,26 @@ export default function GeneratePage() {
             })
 
             if (!res.ok) {
-                throw new Error('Generation failed')
+                const payload = await res.json().catch(() => null)
+                const message = payload?.error || payload?.details || `Generation failed (${res.status})`
+                throw new Error(message)
             }
 
             const data = await res.json()
-            setGenerationId(data.id)
             router.push(`/dashboard/resume/${data.id}`)
 
         } catch (error) {
             console.error(error)
-            alert('An error occurred. Please try again.')
+            const message = error instanceof Error ? error.message : 'An error occurred. Please try again.'
+            alert(message)
             setStep('job')
+        } finally {
+            setIsSubmitting(false)
         }
+    }
+
+    const handleGenerateClick = async () => {
+        await handleGeneration()
     }
 
     return (
@@ -56,7 +67,7 @@ export default function GeneratePage() {
                         <div className="absolute left-0 top-1/2 w-full h-1 bg-slate-200 -z-10"></div>
 
                         <StepIndicator number={1} title="Upload Resume" active={step === 'upload'} completed={step !== 'upload'} />
-                        <StepIndicator number={2} title="Job Title" active={step === 'job'} completed={['job', 'generating', 'complete'].includes(step)} />
+                        <StepIndicator number={2} title="Job Details" active={step === 'job'} completed={['job', 'generating', 'complete'].includes(step)} />
                         <StepIndicator number={3} title="Generate" active={step === 'generating'} completed={step === 'complete'} />
                     </div>
                 </div>
@@ -67,6 +78,8 @@ export default function GeneratePage() {
                         <UploadStep
                             file={file}
                             setFile={setFile}
+                            photo={photo}
+                            setPhoto={setPhoto}
                             onNext={() => setStep('job')}
                         />
                     )}
@@ -78,7 +91,7 @@ export default function GeneratePage() {
                             value={jobValue}
                             setValue={setJobValue}
                             onBack={() => setStep('upload')}
-                            onGenerate={handleGeneration}
+                            onGenerate={handleGenerateClick}
                         />
                     )}
 

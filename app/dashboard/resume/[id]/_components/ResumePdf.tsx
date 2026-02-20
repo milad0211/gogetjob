@@ -88,7 +88,8 @@ interface ResumeData {
     }
 }
 
-export function ResumePdf({ data }: { data: ResumeData }) {
+export function ResumePdf({ data, mode }: { data: ResumeData; mode?: 'ats' | 'premium' }) {
+    const isPremium = mode === 'premium'
     return (
         <Document>
             <Page size="A4" style={styles.page}>
@@ -102,7 +103,9 @@ export function ResumePdf({ data }: { data: ResumeData }) {
 
                 {/* Summary */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Professional Summary</Text>
+                    <Text style={styles.sectionTitle}>
+                        {isPremium ? 'Executive Summary' : 'Professional Summary'}
+                    </Text>
                     <Text>{data.summary}</Text>
                 </View>
 

@@ -10,6 +10,7 @@ export default function LoginPage() {
     const [errorMsg, setErrorMsg] = useState('')
 
     const handleLogin = async () => {
+        console.log('handleLogin')
         setIsLoading(true)
         setErrorMsg('')
         const supabase = createClient()

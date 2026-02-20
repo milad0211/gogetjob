@@ -1,23 +1,57 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { geminiModel } from '@/lib/gemini'
+import { hasProAccess } from '@/lib/subscription'
+import { generateCoverLetter } from '@/lib/resume-engine/ai'
+import { parseJobDescription } from '@/lib/resume-engine/job-parser'
+import type { CanonicalResume } from '@/lib/resume-engine/types'
+import type { JobSpec } from '@/lib/resume-engine/types'
+
+function isQuotaExceededError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') return false
+    const err = error as { message?: string; status?: number; statusText?: string }
+    const message = (err.message || '').toLowerCase()
+    const statusText = (err.statusText || '').toLowerCase()
+    return err.status === 429 || message.includes('quota') || message.includes('too many requests') || statusText.includes('too many requests')
+}
+
+function fallbackCoverLetter(resume: CanonicalResume, jobSpec: JobSpec): string {
+    const name = resume.contact?.name || 'Candidate'
+    const role = jobSpec.title || 'this role'
+    const company = jobSpec.companyName || 'your team'
+    const proof1 = resume.experience[0]?.bullets?.[0] || resume.summary || 'I have delivered measurable results across software projects.'
+    const proof2 = resume.experience[0]?.bullets?.[1] || resume.experience[1]?.bullets?.[0] || 'I consistently collaborate across teams to deliver high-quality outcomes.'
+    const keySkills = resume.skills.slice(0, 5).join(', ')
+
+    return `Dear Hiring Manager,
+
+I am excited to apply for the ${role} position at ${company}, where I can contribute with hands-on experience in ${keySkills || 'software engineering'}.
+
+In my recent work, ${proof1.charAt(0).toLowerCase() + proof1.slice(1)}. I also demonstrated strong execution by ${proof2.charAt(0).toLowerCase() + proof2.slice(1)}.
+
+What draws me to this opportunity is the chance to apply my background to a role with clear product and technical impact. I am confident I can add value quickly while maintaining quality, ownership, and collaboration standards.
+
+Thank you for your time and consideration. I would welcome the opportunity to discuss how my experience aligns with your needs.
+
+Sincerely,
+${name}`.trim()
+}
 
 export async function POST(request: Request) {
-    const supabase = createClient()
-    const { data: { user } } = await (await supabase).auth.getUser()
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Check Pro Status
-    const { data: profile } = await (await supabase)
+    const { data: profile } = await supabase
         .from('profiles')
         .select('plan, subscription_status')
         .eq('id', user.id)
         .single()
 
-    const isPro = profile?.plan === 'pro' // && profile?.subscription_status === 'active'
+    const isPro = hasProAccess(profile)
 
     if (!isPro) {
         return NextResponse.json(
@@ -29,10 +63,10 @@ export async function POST(request: Request) {
     try {
         const { resumeId } = await request.json()
 
-        // Fetch the generation data to get resume text and job text
-        const { data: gen } = await (await supabase)
+        // Fetch the generation data
+        const { data: gen } = await supabase
             .from('resume_generations')
-            .select('resume_original_text, job_text')
+            .select('resume_generated_text, job_text')
             .eq('id', resumeId)
             .eq('user_id', user.id)
             .single()
@@ -41,35 +75,28 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Resume generation not found' }, { status: 404 })
         }
 
-        const systemPrompt = `You are an expert career coach and professional writer. 
-    Write a compelling, professional cover letter based on the candidate's resume and the job description.
-    
-    Rules:
-    1. Tone: Professional, enthusiastic, and confident.
-    2. Format: Standard cover letter format (Dear Hiring Manager, Body, Conclusion, Sign-off).
-    3. Content: Highlight specific achievements from the resume that match the job requirements.
-    4. Length: 300-400 words.
-    5. Do NOT use placeholders like [Your Name] if you can find the name in the resume. If not, use generic placeholders.
-    6. Output format: Markdown.`
+        // Parse the optimized resume from DB
+        let optimizedResume: CanonicalResume
+        try {
+            optimizedResume = JSON.parse(gen.resume_generated_text) as CanonicalResume
+        } catch {
+            return NextResponse.json({ error: 'Could not parse saved resume data' }, { status: 500 })
+        }
 
-        const userMessage = `
-    RESUME CONTENT:
-    ${gen.resume_original_text.substring(0, 3000)}
+        // Parse job description for structured context
+        const jobSpec = await parseJobDescription(gen.job_text, { preferHeuristic: true })
 
-    JOB DESCRIPTION:
-    ${gen.job_text.substring(0, 3000)}
-    `
-
-        const result = await geminiModel.generateContent({
-            contents: [
-                { role: 'user', parts: [{ text: systemPrompt + "\n" + userMessage }] }
-            ]
-        })
-
-        const coverLetter = result.response.text()
+        // Generate cover letter with structured context
+        let coverLetter: string
+        try {
+            coverLetter = await generateCoverLetter(optimizedResume, jobSpec, gen.job_text)
+        } catch (error) {
+            if (!isQuotaExceededError(error)) throw error
+            coverLetter = fallbackCoverLetter(optimizedResume, jobSpec)
+        }
 
         // Save to DB
-        await (await supabase)
+        await supabase
             .from('resume_generations')
             .update({ cover_letter_text: coverLetter })
             .eq('id', resumeId)
@@ -77,7 +104,16 @@ export async function POST(request: Request) {
         return NextResponse.json({ coverLetter })
 
     } catch (error) {
-        console.error('Cover Letter Gen Error:', error)
-        return NextResponse.json({ error: 'Failed to generate cover letter' }, { status: 500 })
+        console.error('[CoverLetter] Error:', error)
+        if (isQuotaExceededError(error)) {
+            return NextResponse.json(
+                { error: 'AI quota exceeded. Please try again later.', code: 'ai_quota_exceeded' },
+                { status: 429 }
+            )
+        }
+        return NextResponse.json(
+            { error: 'Failed to generate cover letter' },
+            { status: 500 }
+        )
     }
 }
