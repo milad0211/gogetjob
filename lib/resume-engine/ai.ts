@@ -6,7 +6,7 @@
 // ======================================================================
 
 import { geminiModel } from '@/lib/gemini'
-import type { CanonicalResume, JobSpec, GapReport } from './types'
+import type { CanonicalResume, EvidenceMap, JobSpec, GapReport } from './types'
 import { POWER_VERBS, BULLET_RULES } from './types'
 
 // ── Gap Analysis ─────────────────────────────────────────────────────
@@ -83,18 +83,25 @@ RULES:
 export async function rewriteResume(
     canonical: CanonicalResume,
     jobSpec: JobSpec,
-    gapReport: GapReport
+    gapReport: GapReport,
+    evidenceMap: EvidenceMap
 ): Promise<CanonicalResume> {
     const powerVerbsList = POWER_VERBS.slice(0, 40).join(', ')
+    type RewritePatch = {
+        summary?: string
+        skills?: string[]
+        experienceBullets?: Array<{ index: number; bullets: string[] }>
+        projectDescriptions?: Array<{ index: number; description: string }>
+    }
 
     const prompt = `You are an Expert ATS Resume Writer.
 
-TASK: Rewrite the candidate's resume to maximize alignment with the target job, following strict rules.
+TASK: Return a PATCH only. Do not regenerate the full resume JSON.
 
 === CANDIDATE DATA (FACTS — DO NOT CHANGE) ===
 Contact: ${JSON.stringify(canonical.contact)}
-
-Experience (preserve ALL companies, roles, and dates exactly):
+Summary: ${canonical.summary}
+Experience (preserve ALL role/company/dates exactly):
 ${JSON.stringify(canonical.experience, null, 2)}
 
 Projects:
@@ -115,51 +122,62 @@ Responsibilities: ${jobSpec.responsibilities.join('; ')}
 Domain terms: ${jobSpec.domainTerms.join(', ')}
 
 === GAP ANALYSIS ===
-Missing keywords to address: ${gapReport.missingKeywords.join(', ')}
-Recommendations: ${gapReport.recommendations.join('; ')}
+Matched keywords: ${gapReport.matchedKeywords.map(item => item.keyword).join(', ')}
+Recommendations (only when evidence-backed): ${gapReport.recommendations.join('; ')}
+
+=== EVIDENCE LOCK (MANDATORY) ===
+Allowed skills only: ${evidenceMap.skills.join(', ')}
+Allowed experience entities (role/company/dates only):
+${JSON.stringify(evidenceMap.entities.experiences, null, 2)}
+Allowed education entities (degree/school/date only):
+${JSON.stringify(evidenceMap.entities.education, null, 2)}
+Allowed projects only:
+${JSON.stringify(evidenceMap.projects, null, 2)}
+Allowed links:
+${JSON.stringify(evidenceMap.links)}
+Allowed metrics/numbers:
+${JSON.stringify(evidenceMap.metrics)}
 
 === REWRITE RULES (MANDATORY) ===
 1. NEVER invent companies, roles, dates, degrees, or schools
 2. NEVER add skills the candidate doesn't have evidence for
-3. Rewrite ONLY: bullets, summary, and skill ordering/grouping
+3. Rewrite ONLY: summary, bullets, project descriptions, and skill ordering/grouping
 4. BULLET FORMAT is mandatory for every bullet:
    Action Verb + Scope/Context + Tool/Technology + Outcome
 5. Each bullet: max ${BULLET_RULES.MAX_WORDS_PER_BULLET} words
-6. Each role: ${BULLET_RULES.MIN_BULLETS_PER_ROLE}-${BULLET_RULES.MAX_BULLETS_PER_ROLE} bullets
+6. Each role must keep at least original bullet count and stay within ${BULLET_RULES.MIN_BULLETS_PER_ROLE}-${BULLET_RULES.MAX_BULLETS_PER_ROLE}
 7. VERB DIVERSITY: no power verb may appear more than ${BULLET_RULES.MAX_VERB_REPETITIONS} times across ALL bullets.
    Use diverse verbs such as: Implemented, Developed, Refactored, Integrated, Optimized, Designed, Built, Architected, Delivered, Collaborated.
    You may also use this list: ${powerVerbsList}
-8. Summary: 3-4 sentences, position candidate for THIS specific job, include top must-have keywords
-9. Skills: reorder so JD-relevant skills come first, group by category
+8. Summary: 3-4 sentences, position candidate for THIS specific job, include only evidence-backed must-have keywords
+9. Skills: reorder only; output must be subset of allowed skills
 10. Use EXACT PHRASES from the JD where naturally applicable (e.g., "${jobSpec.exactPhrases.slice(0, 3).join('", "')}")
 11. OUTCOME RULES:
-   - If the original resume contains a specific number/percentage, you MAY use it
-   - If NO number exists in the original, use qualitative outcomes only
-   - NEVER invent numeric outcomes like "increased by 40%" or "reduced by 30%" unless present in original text
+   - You MAY only use metrics that exist in Allowed metrics/numbers
+   - If no metric fits a bullet, use qualitative outcomes only
+   - NEVER invent numeric outcomes like "increased by 40%" unless metric exists in allowed list
 12. Prioritize must-have keywords in the first 1-2 bullets of the most relevant experience
 13. ANTI-HALLUCINATION (CRITICAL):
    - company, startDate, endDate, role fields must be copied VERBATIM from original JSON
    - school and degree fields must be copied VERBATIM from original JSON
    - NEVER output "Unknown", "N/A", "TBD", or "-"
    - If you don't know a value, output "" (empty string)
+14. NEVER remove project links. If rewriting a project description, keep every URL from the original description.
 
 === OUTPUT FORMAT ===
-Return ONLY valid JSON with same structure:
+Return ONLY valid JSON patch with this shape:
 {
-    "contact": ${JSON.stringify(canonical.contact)},
     "summary": "rewritten summary",
-    "experience": [{ "role": "same", "company": "same", "startDate": "same", "endDate": "same", "bullets": ["rewritten"] }],
-    "projects": [{ "name": "same", "description": "rewritten", "technologies": ["same"] }],
-    "skills": ["reordered and grouped"],
-    "education": ${JSON.stringify(canonical.education)},
-    "certifications": ${JSON.stringify(canonical.certifications || [])}
+    "skills": ["reordered evidence-backed skills only"],
+    "experienceBullets": [{ "index": 0, "bullets": ["rewritten bullet"] }],
+    "projectDescriptions": [{ "index": 0, "description": "rewritten description" }]
 }`
 
     const result = await geminiModel.generateContent({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
             responseMimeType: 'application/json',
-            temperature: 0.6,
+            temperature: 0.2,
         },
     })
 
@@ -167,26 +185,50 @@ Return ONLY valid JSON with same structure:
     if (!responseText) throw new Error('Empty response from AI rewriter')
 
     const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim()
-    const rewritten = JSON.parse(cleanJson) as CanonicalResume
-
-    // Force-preserve facts that AI must not change
-    rewritten.contact = canonical.contact
-    rewritten.education = canonical.education
-    rewritten.certifications = canonical.certifications || []
-    rewritten.photo = canonical.photo
-
-    // Force-preserve company names and dates
-    for (let i = 0; i < rewritten.experience.length && i < canonical.experience.length; i++) {
-        rewritten.experience[i].company = canonical.experience[i].company
-        rewritten.experience[i].startDate = canonical.experience[i].startDate
-        rewritten.experience[i].endDate = canonical.experience[i].endDate
-        rewritten.experience[i].role = canonical.experience[i].role
+    const patch = JSON.parse(cleanJson) as RewritePatch
+    const rewritten: CanonicalResume = {
+        ...canonical,
+        summary: canonical.summary,
+        experience: canonical.experience.map((exp) => ({ ...exp, bullets: [...exp.bullets] })),
+        projects: canonical.projects.map((project) => ({ ...project })),
+        skills: [...canonical.skills],
+        portfolioLinks: [...(canonical.portfolioLinks || [])],
     }
 
-    // Ensure arrays
-    if (!rewritten.projects) rewritten.projects = canonical.projects || []
-    if (!rewritten.skills) rewritten.skills = canonical.skills
-    if (!rewritten.experience) rewritten.experience = canonical.experience
+    if (patch.summary && patch.summary.trim().length > 20) {
+        rewritten.summary = patch.summary.trim()
+    }
+
+    if (Array.isArray(patch.experienceBullets)) {
+        for (const item of patch.experienceBullets) {
+            if (!item || typeof item.index !== 'number' || item.index < 0 || item.index >= rewritten.experience.length) continue
+            const originalBullets = canonical.experience[item.index]?.bullets || []
+            const nextBullets = Array.isArray(item.bullets)
+                ? item.bullets.map((bullet) => bullet.trim()).filter(Boolean)
+                : []
+            const minBullets = Math.max(BULLET_RULES.MIN_BULLETS_PER_ROLE, Math.ceil(originalBullets.length * 0.9))
+            rewritten.experience[item.index].bullets = nextBullets.length >= minBullets ? nextBullets : originalBullets
+        }
+    }
+
+    if (Array.isArray(patch.projectDescriptions)) {
+        for (const item of patch.projectDescriptions) {
+            if (!item || typeof item.index !== 'number' || item.index < 0 || item.index >= rewritten.projects.length) continue
+            const originalDescription = canonical.projects[item.index]?.description || ''
+            const originalUrls = originalDescription.match(/\bhttps?:\/\/[^\s)]+/gi) || []
+            const proposed = (item.description || '').trim()
+            if (!proposed) continue
+            const withLinks = originalUrls.reduce((acc, url) => (acc.includes(url) ? acc : `${acc} ${url}`.trim()), proposed)
+            rewritten.projects[item.index].description = withLinks
+        }
+    }
+
+    // Skills lock: only keep skills with evidence
+    const allowedSkills = new Set(evidenceMap.skills.map((skill) => skill.toLowerCase().trim()).filter(Boolean))
+    const filteredSkills = (patch.skills || rewritten.skills || [])
+        .map((skill) => skill.trim())
+        .filter((skill) => skill && allowedSkills.has(skill.toLowerCase()))
+    rewritten.skills = filteredSkills.length > 0 ? Array.from(new Set(filteredSkills)) : canonical.skills
 
     return rewritten
 }

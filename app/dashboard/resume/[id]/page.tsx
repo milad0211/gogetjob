@@ -48,6 +48,7 @@ export default async function ResumePage({
     const afterBreakdown = analysis?.afterScore
     const qualityStatus = metadata?.quality_gate_status || 'passed'
     const qualityFailed = qualityStatus === 'failed'
+    const qualityIssues = metadata?.quality_gate_issues || []
     const stillMissing = afterBreakdown?.details?.missingPhrases || []
 
     return (
@@ -76,30 +77,25 @@ export default async function ResumePage({
                         Quality: {qualityStatus}
                     </span>
 
-                    {qualityFailed ? (
-                        <>
-                            <span className="bg-slate-200 text-slate-500 px-4 py-2 rounded-lg font-semibold text-sm cursor-not-allowed">
-                                📄 ATS PDF Locked
-                            </span>
-                            <span className="bg-slate-200 text-slate-500 px-4 py-2 rounded-lg font-semibold text-sm cursor-not-allowed">
-                                ✨ Premium PDF Locked
-                            </span>
-                        </>
-                    ) : (
-                        <>
-                            <a
-                                href={`/api/pdf/${generation.id}?mode=ats&download=1`}
-                                className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg font-semibold transition text-sm"
-                            >
-                                📄 Download ATS PDF
-                            </a>
-                            <a
-                                href={`/api/pdf/${generation.id}?mode=premium&download=1`}
-                                className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg font-semibold transition text-sm"
-                            >
-                                ✨ Download Premium PDF
-                            </a>
-                        </>
+                    <a
+                        href={`/api/pdf/${generation.id}?mode=ats&download=1`}
+                        className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg font-semibold transition text-sm"
+                    >
+                        📄 Download ATS PDF
+                    </a>
+                    <a
+                        href={`/api/pdf/${generation.id}?mode=premium&download=1`}
+                        className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg font-semibold transition text-sm"
+                    >
+                        ✨ Download Premium PDF
+                    </a>
+                    {(qualityFailed || metadata?.safe_mode_used) && (
+                        <a
+                            href={`/api/pdf/${generation.id}?mode=ats&safe=1&download=1`}
+                            className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg font-semibold transition text-sm"
+                        >
+                            🛡 Download Safe ATS PDF
+                        </a>
                     )}
                 </div>
             </div>
@@ -170,10 +166,10 @@ export default async function ResumePage({
                         {/* Dimensional Breakdown */}
                         {beforeBreakdown && afterBreakdown && (
                             <div className="space-y-3 mt-4 pt-4 border-t border-slate-100">
-                                <DimensionBar label="Keywords" before={beforeBreakdown.keywordCoverage} after={afterBreakdown.keywordCoverage} weight="35%" />
-                                <DimensionBar label="Structure" before={beforeBreakdown.structureHygiene} after={afterBreakdown.structureHygiene} weight="25%" />
-                                <DimensionBar label="Evidence" before={beforeBreakdown.relevanceEvidence} after={afterBreakdown.relevanceEvidence} weight="25%" />
-                                <DimensionBar label="Impact" before={beforeBreakdown.impactClarity} after={afterBreakdown.impactClarity} weight="15%" />
+                                <DimensionBar label="Keywords" before={beforeBreakdown.keywordCoverage} after={afterBreakdown.keywordCoverage} />
+                                <DimensionBar label="Structure" before={beforeBreakdown.structureHygiene} after={afterBreakdown.structureHygiene} />
+                                <DimensionBar label="Evidence" before={beforeBreakdown.relevanceEvidence} after={afterBreakdown.relevanceEvidence} />
+                                <DimensionBar label="Impact" before={beforeBreakdown.impactClarity} after={afterBreakdown.impactClarity} />
                             </div>
                         )}
                     </div>
@@ -234,6 +230,36 @@ export default async function ResumePage({
                         </div>
                     )}
 
+                    {(qualityFailed || qualityIssues.length > 0) && (
+                        <div className="bg-red-50 rounded-xl border border-red-200 p-4">
+                            <h4 className="text-xs font-bold text-red-700 mb-2 flex items-center gap-1">
+                                <AlertTriangle size={14} /> Quality Gate Issues
+                            </h4>
+                            <ul className="space-y-1 mb-3">
+                                {qualityIssues.slice(0, 8).map((issue, i) => (
+                                    <li key={i} className="text-xs text-red-700">• {issue}</li>
+                                ))}
+                            </ul>
+                            <p className="text-xs text-red-700 mb-3">
+                                Your output is shown with warnings. Use Safe Mode output or regenerate from upload.
+                            </p>
+                            <div className="flex gap-2">
+                                <a
+                                    href={`/api/pdf/${generation.id}?mode=ats&safe=1&download=1`}
+                                    className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-md font-semibold transition text-xs"
+                                >
+                                    Download Safe ATS PDF
+                                </a>
+                                <Link
+                                    href="/dashboard/generate"
+                                    className="bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-md font-semibold transition text-xs"
+                                >
+                                    Regenerate (Safe Mode)
+                                </Link>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Cover Letter */}
                     <div className="flex-1 min-h-[350px]">
                         <CoverLetterGenerator resumeId={generation.id} isPro={!!isPro} />
@@ -243,19 +269,14 @@ export default async function ResumePage({
                 {/* Right Column: PDF Preview */}
                 <div className="lg:col-span-2 bg-slate-600 rounded-2xl shadow-inner overflow-hidden relative flex items-center justify-center min-h-[600px]">
                     <iframe
-                        src={`/api/pdf/${generation.id}?mode=ats`}
+                        src={`/api/pdf/${generation.id}?mode=ats${qualityFailed ? '&safe=1' : ''}`}
                         className="w-full h-full bg-white"
                         title="Resume Preview"
                     />
                     {qualityFailed && (
-                        <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-[1px] flex items-center justify-center">
-                            <div className="bg-white/95 text-slate-900 px-5 py-4 rounded-xl shadow-lg border border-slate-200 flex items-center gap-3">
-                                <ShieldAlert className="text-red-500" size={20} />
-                                <div>
-                                    <p className="font-semibold text-sm">Quality Check Failed</p>
-                                    <p className="text-xs text-slate-500">Fix detected issues and regenerate to unlock PDF download.</p>
-                                </div>
-                            </div>
+                        <div className="absolute top-4 left-4 bg-white/95 text-slate-900 px-4 py-2 rounded-lg shadow border border-red-200 flex items-center gap-2">
+                            <ShieldAlert className="text-red-500" size={16} />
+                            <p className="text-xs font-medium">Safe preview shown due to quality issues.</p>
                         </div>
                     )}
                 </div>
@@ -266,11 +287,10 @@ export default async function ResumePage({
 
 // ── Dimension Bar Component ───────────────────────────────────────────
 
-function DimensionBar({ label, before, after, weight }: {
+function DimensionBar({ label, before, after }: {
     label: string
     before: number
     after: number
-    weight: string
 }) {
     const improvement = after - before
     return (

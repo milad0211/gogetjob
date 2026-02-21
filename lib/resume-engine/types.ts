@@ -49,7 +49,9 @@ export interface CanonicalResume {
         name: string
         description: string
         technologies: string[]
+        url?: string
     }>
+    portfolioLinks?: string[]
     skills: string[]
     education: Array<{
         degree: string
@@ -69,6 +71,33 @@ export interface ParseResult {
     warnings: string[]
     missingFields: string[]
     evidenceSkills: string[]
+    evidenceMap: EvidenceMap
+    safeModeRequired: boolean
+}
+
+export interface EvidenceMap {
+    entities: {
+        experiences: Array<{
+            role: string
+            company: string
+            startDate: string
+            endDate: string
+        }>
+        education: Array<{
+            degree: string
+            school: string
+            date: string
+        }>
+    }
+    skills: string[]
+    projects: Array<{
+        name: string
+        description: string
+        technologies: string[]
+        url?: string
+    }>
+    links: string[]
+    metrics: string[]
 }
 
 export interface JobSpec {
@@ -114,6 +143,7 @@ export interface EngineMetadata {
     parser_warnings: string[]
     parser_missing_fields: string[]
     failure_reason?: string
+    safe_mode_used?: boolean
 }
 
 export interface FullAnalysis {
@@ -121,5 +151,5 @@ export interface FullAnalysis {
     afterScore: ScoreBreakdown
     gapReport: GapReport
     metadata: EngineMetadata
+    safeResume?: CanonicalResume
 }
-

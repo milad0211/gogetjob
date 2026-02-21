@@ -1,4 +1,5 @@
 import type { CanonicalResume, JobSpec, ScoreBreakdown } from './types'
+import { POWER_VERBS } from './types'
 
 function normalize(value: string): string {
     return value.toLowerCase().replace(/[^a-z0-9+#.\s]/g, ' ').replace(/\s+/g, ' ').trim()
@@ -70,7 +71,8 @@ function scoreImpactClarity(resume: CanonicalResume): number {
     const bullets = resume.experience.flatMap((exp) => exp.bullets)
     if (bullets.length === 0) return 40
 
-    const actionVerbRatio = bullets.filter((bullet) => /^[A-Z][a-z]+ed\b/.test(bullet.trim())).length / bullets.length
+    const verbRegex = new RegExp(`^(${POWER_VERBS.map((verb) => verb.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'i')
+    const actionVerbRatio = bullets.filter((bullet) => verbRegex.test(bullet.trim())).length / bullets.length
     const hasOutcomeRatio = bullets.filter((bullet) => /\b(increased|reduced|improved|optimized|delivered|launched|drove|saved|scaled)\b/i.test(bullet)).length / bullets.length
     const conciseRatio = bullets.filter((bullet) => bullet.split(/\s+/).length <= 30).length / bullets.length
 

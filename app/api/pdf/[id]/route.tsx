@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { renderToStream } from '@react-pdf/renderer'
 import { ResumePdf } from '@/app/dashboard/resume/[id]/_components/ResumePdf'
 import { NextResponse } from 'next/server'
+import type { FullAnalysis } from '@/lib/resume-engine/types'
 
 export const runtime = 'nodejs'
 
@@ -13,6 +14,7 @@ export async function GET(
     const supabase = await createClient()
     const { searchParams } = new URL(request.url)
     const shouldDownload = searchParams.get('download') === '1'
+    const useSafe = searchParams.get('safe') === '1'
     const modeParam = searchParams.get('mode')
     const mode = modeParam === 'premium' ? 'premium' : 'ats'
 
@@ -26,7 +28,7 @@ export async function GET(
 
     const { data: generation } = await supabase
         .from('resume_generations')
-        .select('resume_generated_text')
+        .select('resume_generated_text, analysis_json')
         .eq('id', id)
         .eq('user_id', user.id)
         .single()
@@ -35,9 +37,12 @@ export async function GET(
         return new NextResponse('Not Found', { status: 404 })
     }
 
-    const data = typeof generation.resume_generated_text === 'string'
+    const generatedData = typeof generation.resume_generated_text === 'string'
         ? JSON.parse(generation.resume_generated_text)
         : generation.resume_generated_text
+    const analysis = generation.analysis_json as FullAnalysis | null
+    const safeData = analysis?.safeResume
+    const data = useSafe && safeData ? safeData : generatedData
 
     const stream = await renderToStream(<ResumePdf data={data} mode={mode} />)
 

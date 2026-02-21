@@ -7,6 +7,9 @@ const COMMON_SKILLS = [
     'Docker', 'Kubernetes', 'CI/CD', 'GraphQL', 'REST', 'Microservices', 'Git',
     'Linux', 'Tailwind', 'HTML', 'CSS', 'Testing', 'Jest', 'Cypress', 'SaaS',
     'Agile', 'Scrum', 'Data Analysis', 'Machine Learning', 'NLP',
+    'Kotlin', 'Android', 'Jetpack Compose', 'XML', 'Gradle', 'Coroutines',
+    'MVVM', 'Retrofit', 'Room', 'Material', 'Cursor', 'Incident Report',
+    'Bug Trace', 'Screenshots', 'Slack', 'Alpha Testing',
 ]
 
 function normalizeText(value: string): string {
@@ -178,4 +181,3 @@ export async function parseJobDescription(
         return heuristicParseJobDescription(jobText)
     }
 }
-

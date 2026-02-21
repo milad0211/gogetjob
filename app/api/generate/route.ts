@@ -9,7 +9,7 @@ import { calculateScore } from '@/lib/resume-engine/scorer'
 import { validateOutput } from '@/lib/resume-engine/quality-gate'
 import type { FullAnalysis, EngineMetadata, ParseResult } from '@/lib/resume-engine/types'
 import type { CanonicalResume } from '@/lib/resume-engine/types'
-import type { GapReport, JobSpec } from '@/lib/resume-engine/types'
+import type { EvidenceMap, GapReport, JobSpec } from '@/lib/resume-engine/types'
 import { ENGINE_VERSION, PROMPT_VERSION, MODEL_NAME, CONFIDENCE_THRESHOLDS } from '@/lib/resume-engine/types'
 
 export const runtime = 'nodejs'
@@ -28,6 +28,12 @@ interface ConfirmedFactsPayload {
         school?: string
         date?: string
     }>
+}
+
+function hasStatusCode(error: unknown, status: number): boolean {
+    if (!error || typeof error !== 'object') return false
+    const maybe = error as { status?: number }
+    return maybe.status === status
 }
 
 function detectMissingFields(resume: CanonicalResume): string[] {
@@ -88,6 +94,26 @@ function normalizeText(value: string): string {
     return value.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
+function sanitizeTextForDb(value: string): string {
+    return value
+        .replace(/\u0000/g, '')
+        .replace(/[\u0001-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+}
+
+function sanitizeForDb<T>(input: T): T {
+    if (typeof input === 'string') {
+        return sanitizeTextForDb(input) as T
+    }
+    if (Array.isArray(input)) {
+        return input.map((item) => sanitizeForDb(item)) as T
+    }
+    if (input && typeof input === 'object') {
+        const entries = Object.entries(input as Record<string, unknown>).map(([key, value]) => [key, sanitizeForDb(value)])
+        return Object.fromEntries(entries) as T
+    }
+    return input
+}
+
 function buildFallbackGapReport(resume: CanonicalResume, jobSpec: JobSpec): GapReport {
     const resumeText = normalizeText([
         resume.summary,
@@ -105,8 +131,6 @@ function buildFallbackGapReport(resume: CanonicalResume, jobSpec: JobSpec): GapR
 
     const matchedKeywords: GapReport['matchedKeywords'] = []
     const missingKeywords: string[] = []
-    const experienceBullets = resume.experience.flatMap(exp => exp.bullets)
-
     for (const keyword of allKeywords) {
         const normalizedKeyword = normalizeText(keyword)
         if (!normalizedKeyword) continue
@@ -136,13 +160,15 @@ function buildFallbackGapReport(resume: CanonicalResume, jobSpec: JobSpec): GapR
     }
 }
 
-function buildFallbackRewrite(resume: CanonicalResume, jobSpec: JobSpec): CanonicalResume {
+function buildFallbackRewrite(resume: CanonicalResume, jobSpec: JobSpec, evidenceMap: EvidenceMap): CanonicalResume {
     const jdPriority = jobSpec.mustHaveSkills.map(skill => skill.toLowerCase())
     const reorderedSkills = [...resume.skills].sort((a, b) => {
         const aPriority = jdPriority.some(keyword => a.toLowerCase().includes(keyword)) ? 0 : 1
         const bPriority = jdPriority.some(keyword => b.toLowerCase().includes(keyword)) ? 0 : 1
         return aPriority - bPriority
     })
+    const allowedSkills = new Set(evidenceMap.skills.map((skill) => skill.toLowerCase()))
+    const filteredSkills = reorderedSkills.filter((skill) => allowedSkills.has(skill.toLowerCase()))
 
     const summaryPrefix = resume.summary?.trim()
         ? resume.summary.trim()
@@ -151,7 +177,26 @@ function buildFallbackRewrite(resume: CanonicalResume, jobSpec: JobSpec): Canoni
     return {
         ...resume,
         summary: `${summaryPrefix} Target role alignment: ${jobSpec.title}.`,
-        skills: reorderedSkills,
+        skills: filteredSkills.length > 0 ? filteredSkills : resume.skills,
+        portfolioLinks: resume.portfolioLinks || evidenceMap.links,
+    }
+}
+
+function buildSafeResume(resume: CanonicalResume, evidenceMap: EvidenceMap): CanonicalResume {
+    const allowedSkills = new Set(evidenceMap.skills.map((skill) => skill.toLowerCase()))
+    const safeSkills = resume.skills.filter((skill) => allowedSkills.has(skill.toLowerCase()))
+    const links = Array.from(new Set([...(resume.portfolioLinks || []), ...evidenceMap.links]))
+    return {
+        ...resume,
+        skills: safeSkills.length > 0 ? safeSkills : resume.skills,
+        projects: resume.projects.map((project) => {
+            const url = project.url || evidenceMap.links.find((link) => project.description.includes(link))
+            const description = url && !project.description.includes(url)
+                ? `${project.description} ${url}`.trim()
+                : project.description
+            return { ...project, url, description }
+        }),
+        portfolioLinks: links,
     }
 }
 
@@ -197,7 +242,7 @@ export async function POST(req: Request) {
         // ── Step 1: Extract PDF Text ─────────────────────────────
         console.log(`[Engine v${ENGINE_VERSION}] Starting generation for user ${user.id}`)
         const arrayBuffer = await file.arrayBuffer()
-        const resumeText = await extractTextFromPdf(Buffer.from(arrayBuffer))
+        const resumeText = sanitizeTextForDb(await extractTextFromPdf(Buffer.from(arrayBuffer)))
 
         if (!resumeText || resumeText.length < 50) {
             return NextResponse.json({
@@ -207,7 +252,7 @@ export async function POST(req: Request) {
         }
 
         // ── Step 2: Get Job Description Text ─────────────────────
-        let finalJobText = jobTextInit
+        let finalJobText = sanitizeTextForDb(jobTextInit)
         if (jobMode === 'url' && jobUrl) {
             if (!finalJobText) {
                 try {
@@ -216,7 +261,9 @@ export async function POST(req: Request) {
                     })
                     if (!res.ok) throw new Error(`Fetch failed: ${res.status}`)
                     const html = await res.text()
-                    finalJobText = html.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').substring(0, 10000).trim()
+                    finalJobText = sanitizeTextForDb(
+                        html.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').substring(0, 10000).trim()
+                    )
                 } catch {
                     return NextResponse.json({
                         error: 'Could not fetch URL. Please paste the job description text instead.',
@@ -256,7 +303,7 @@ export async function POST(req: Request) {
                     error: 'AI API quota exceeded while parsing resume. Please try again later or verify your API key limits.',
                     code: 'ai_quota_exceeded'
                 }, { status: 429 })
-            } else if ((error as any).status === 403) {
+            } else if (hasStatusCode(error, 403)) {
                 return NextResponse.json({
                     error: 'AI API access forbidden. This might be due to regional restrictions (e.g. your server IP is blocked by Google) or an invalid key. A VPN or proxy may be required.',
                     code: 'api_forbidden'
@@ -299,6 +346,7 @@ export async function POST(req: Request) {
         console.log(`[Engine] Running gap analysis`)
         let gapReport: GapReport
         let aiFallbackMode = false
+        let safeModeUsed = parseResult.safeModeRequired
         try {
             gapReport = await analyzeGap(parseResult.resume, jobSpec)
         } catch (error) {
@@ -316,14 +364,21 @@ export async function POST(req: Request) {
         // ── Step 7: Rewrite Resume ───────────────────────────────
         console.log(`[Engine] Rewriting resume`)
         let rewrittenResume: CanonicalResume
-        try {
-            rewrittenResume = await rewriteResume(parseResult.resume, jobSpec, gapReport)
-        } catch (error) {
-            if (!isQuotaExceededError(error)) throw error
-            aiFallbackMode = true
-            console.warn('[Engine] AI quota exceeded during rewrite. Using heuristic fallback.')
-            rewrittenResume = buildFallbackRewrite(parseResult.resume, jobSpec)
-            parseResult.warnings.push('AI quota exceeded: heuristic resume rewrite was used.')
+        const safeResume = buildSafeResume(parseResult.resume, parseResult.evidenceMap)
+        if (safeModeUsed) {
+            rewrittenResume = buildFallbackRewrite(safeResume, jobSpec, parseResult.evidenceMap)
+            parseResult.warnings.push('Safe mode enabled due to low-confidence verified entities. AI rewrite was skipped.')
+        } else {
+            try {
+                rewrittenResume = await rewriteResume(parseResult.resume, jobSpec, gapReport, parseResult.evidenceMap)
+            } catch (error) {
+                if (!isQuotaExceededError(error)) throw error
+                aiFallbackMode = true
+                safeModeUsed = true
+                console.warn('[Engine] AI quota exceeded during rewrite. Using heuristic fallback.')
+                rewrittenResume = buildFallbackRewrite(safeResume, jobSpec, parseResult.evidenceMap)
+                parseResult.warnings.push('AI quota exceeded: heuristic resume rewrite was used.')
+            }
         }
 
         // ── Step 8: Quality Gate ─────────────────────────────────
@@ -333,12 +388,15 @@ export async function POST(req: Request) {
             ...parseResult.resume.experience.flatMap(e => e.bullets),
             ...parseResult.resume.certifications,
         ]
-        const qualityResult = validateOutput(rewrittenResume, parseResult.resume, evidencePool)
+        let qualityResult = validateOutput(rewrittenResume, parseResult.resume, evidencePool, parseResult.evidenceMap)
         console.log(`[Engine] Quality gate: ${qualityResult.status} (${qualityResult.issues.length} issues)`)
 
         if (!qualityResult.passed) {
             console.error('[Engine] Quality gate FAILED:', qualityResult.issues)
-            // Still save but mark as failed
+            safeModeUsed = true
+            rewrittenResume = buildSafeResume(parseResult.resume, parseResult.evidenceMap)
+            qualityResult = validateOutput(rewrittenResume, parseResult.resume, evidencePool, parseResult.evidenceMap)
+            parseResult.warnings.push('Quality gate failed for AI rewrite; switched to safe resume output.')
         }
 
         // ── Step 9: Score AFTER (rewritten resume) ───────────────
@@ -355,7 +413,12 @@ export async function POST(req: Request) {
             parser_confidence: parseResult.confidence,
             parser_warnings: parseResult.warnings,
             parser_missing_fields: parseResult.missingFields,
-            failure_reason: aiFallbackMode ? 'ai_quota_exceeded_fallback_mode' : undefined,
+            failure_reason: parseResult.safeModeRequired
+                ? 'parser_low_confidence_safe_mode'
+                : aiFallbackMode
+                    ? 'ai_quota_exceeded_fallback_mode'
+                    : undefined,
+            safe_mode_used: safeModeUsed,
         }
 
         const fullAnalysis: FullAnalysis = {
@@ -363,19 +426,24 @@ export async function POST(req: Request) {
             afterScore,
             gapReport,
             metadata,
+            safeResume,
         }
+
+        const sanitizedRewrite = sanitizeForDb(rewrittenResume)
+        const sanitizedAnalysis = sanitizeForDb(fullAnalysis)
+        const sanitizedJobUrl = sanitizeTextForDb(jobUrl || '')
 
         // ── Step 11: Save to DB ──────────────────────────────────
         const { data: gen, error } = await supabase.from('resume_generations').insert({
             user_id: user.id,
             job_source: jobMode,
-            job_url: jobUrl,
+            job_url: sanitizedJobUrl,
             job_text: finalJobText,
             resume_original_text: resumeText,
-            resume_generated_text: JSON.stringify(rewrittenResume),
-            analysis_json: fullAnalysis,
+            resume_generated_text: JSON.stringify(sanitizedRewrite),
+            analysis_json: sanitizedAnalysis,
             status: qualityResult.passed ? 'success' : 'failed',
-            error_message: qualityResult.passed ? null : qualityResult.issues.join('; '),
+            error_message: qualityResult.issues.length > 0 ? qualityResult.issues.join('; ') : null,
         }).select().single()
 
         if (error) {
