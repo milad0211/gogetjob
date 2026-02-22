@@ -22,7 +22,9 @@ export async function updateUserPlan(userId: string, plan: 'free' | 'pro') {
 
     if (error) return { error: error.message }
 
-    revalidatePath('/dashboard/admin')
+    revalidatePath('/admin')
+    revalidatePath('/admin/users')
+    revalidatePath('/admin/activity')
     return { success: true }
 }
 
@@ -46,6 +48,8 @@ export async function deleteUser(userId: string) {
 
     if (error) return { error: error.message }
 
-    revalidatePath('/dashboard/admin')
+    revalidatePath('/admin')
+    revalidatePath('/admin/users')
+    revalidatePath('/admin/activity')
     return { success: true }
 }

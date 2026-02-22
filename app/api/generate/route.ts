@@ -208,7 +208,11 @@ export async function POST(req: Request) {
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
         // ── Plan Limits ──────────────────────────────────────────
-        const { data: profile } = await supabase.from('profiles').select('plan, subscription_status, free_generations_used').eq('id', user.id).single()
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('plan, subscription_status, free_generations_used, pro_generations_used_month, pro_generation_reset_at')
+            .eq('id', user.id)
+            .single()
         const isPro = hasProAccess(profile)
         const freeUsed = profile?.free_generations_used || 0
 
@@ -455,6 +459,18 @@ export async function POST(req: Request) {
         if (!isPro) {
             await supabase.from('profiles').update({
                 free_generations_used: freeUsed + 1
+            }).eq('id', user.id)
+        } else {
+            const now = new Date()
+            const currentMonthCount = profile?.pro_generations_used_month || 0
+            const resetAt = profile?.pro_generation_reset_at ? new Date(profile.pro_generation_reset_at) : null
+            const needsReset = !resetAt || Number.isNaN(resetAt.getTime()) || now >= resetAt
+            const nextResetAt = new Date(now)
+            nextResetAt.setUTCMonth(nextResetAt.getUTCMonth() + 1)
+
+            await supabase.from('profiles').update({
+                pro_generations_used_month: needsReset ? 1 : currentMonthCount + 1,
+                pro_generation_reset_at: nextResetAt.toISOString(),
             }).eq('id', user.id)
         }
 

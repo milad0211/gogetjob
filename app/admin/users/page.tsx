@@ -13,16 +13,41 @@ export default async function AdminUsersPage() {
     if (!profile?.is_admin) return redirect('/dashboard')
 
     // Fetch All Users
-    const { data: users, error } = await supabase
+    const { data: users } = await supabase
         .from('profiles')
         .select('*')
         .order('created_at', { ascending: false })
+
+    const { data: activities } = await supabase
+        .from('resume_generations')
+        .select('user_id, created_at')
+        .order('created_at', { ascending: false })
+        .limit(20000)
+
+    const activityByUser = new Map<string, { count: number; lastGenerationAt: string | null }>()
+    for (const row of activities || []) {
+        const prev = activityByUser.get(row.user_id)
+        if (!prev) {
+            activityByUser.set(row.user_id, { count: 1, lastGenerationAt: row.created_at })
+            continue
+        }
+        prev.count += 1
+    }
+
+    const usersWithStats = (users || []).map((u) => {
+        const stat = activityByUser.get(u.id)
+        return {
+            ...u,
+            generationCount: u.total_generations_used ?? stat?.count ?? 0,
+            lastGenerationAt: stat?.lastGenerationAt || null,
+        }
+    })
 
     return (
         <div className="max-w-7xl mx-auto">
             <header className="mb-8">
                 <h1 className="text-3xl font-bold text-slate-900">User Management</h1>
-                <p className="text-slate-500 mt-1">View, edit, or remove users.</p>
+                <p className="text-slate-500 mt-1">View, edit, monitor plans, and track resume generation activity per user.</p>
             </header>
 
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -33,16 +58,18 @@ export default async function AdminUsersPage() {
                                 <th className="px-6 py-3">User</th>
                                 <th className="px-6 py-3">Plan</th>
                                 <th className="px-6 py-3">Role</th>
+                                <th className="px-6 py-3">Resumes</th>
+                                <th className="px-6 py-3">Last Generation</th>
                                 <th className="px-6 py-3 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                            {users?.map((u) => (
-                                <ClientUserRow key={u.id} user={u} />
+                            {usersWithStats.map((u) => (
+                                <ClientUserRow key={u.id} user={u} showMonitoring />
                             ))}
-                            {users?.length === 0 && (
+                            {usersWithStats.length === 0 && (
                                 <tr>
-                                    <td colSpan={4} className="px-6 py-8 text-center text-slate-500">
+                                    <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
                                         No users found.
                                     </td>
                                 </tr>

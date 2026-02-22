@@ -1,10 +1,21 @@
 'use client'
 
 import { updateUserPlan, deleteUser } from '../actions'
-import { Shield, ShieldOff, Trash2, MoreHorizontal } from 'lucide-react'
+import { Shield, ShieldOff, Trash2, Activity } from 'lucide-react'
 import { useState } from 'react'
+import Link from 'next/link'
 
-export function ClientUserRow({ user }: { user: any }) {
+type AdminUserRow = {
+    id: string
+    email: string
+    full_name?: string | null
+    plan: 'free' | 'pro'
+    is_admin?: boolean | null
+    generationCount?: number
+    lastGenerationAt?: string | null
+}
+
+export function ClientUserRow({ user, showMonitoring }: { user: AdminUserRow; showMonitoring?: boolean }) {
     const [loading, setLoading] = useState(false)
 
     const handlePlanChange = async (newPlan: 'free' | 'pro') => {
@@ -44,8 +55,35 @@ export function ClientUserRow({ user }: { user: any }) {
                     {user.is_admin ? 'ADMIN' : 'USER'}
                 </span>
             </td>
+            {showMonitoring && (
+                <>
+                    <td className="px-6 py-4">
+                        <span className="font-bold text-slate-900">{user.generationCount || 0}</span>
+                    </td>
+                    <td className="px-6 py-4 text-xs text-slate-500">
+                        {user.lastGenerationAt
+                            ? new Date(user.lastGenerationAt).toLocaleString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                            })
+                            : 'No activity'}
+                    </td>
+                </>
+            )}
             <td className="px-6 py-4 text-right">
                 <div className="flex items-center justify-end gap-2 opacity-80 hover:opacity-100">
+                    {showMonitoring && (
+                        <Link
+                            href={`/admin/activity?userId=${user.id}`}
+                            className="p-2 rounded-lg text-slate-500 hover:text-blue-700 hover:bg-blue-50 transition"
+                            title="View Activity"
+                        >
+                            <Activity size={18} />
+                        </Link>
+                    )}
                     <button
                         disabled={loading}
                         onClick={() => handlePlanChange(user.plan === 'pro' ? 'free' : 'pro')}
