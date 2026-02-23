@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { hasProAccess } from '@/lib/subscription'
 import { extractTextFromPdf } from '@/lib/resume-engine/extractor'
 import { parseResume } from '@/lib/resume-engine/parser'
 import { parseJobDescription } from '@/lib/resume-engine/job-parser'
@@ -201,24 +200,46 @@ function buildSafeResume(resume: CanonicalResume, evidenceMap: EvidenceMap): Can
 }
 
 export async function POST(req: Request) {
+    // Hoisted for access in catch block (credit release on failure)
+    let reservationType: string | null = null
+    let userId: string | null = null
+    let supabase: Awaited<ReturnType<typeof createClient>> | null = null
+
     try {
         // ── Auth ─────────────────────────────────────────────────
-        const supabase = await createClient()
+        supabase = await createClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        userId = user.id
 
-        // ── Plan Limits ──────────────────────────────────────────
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('plan, subscription_status, free_generations_used, pro_generations_used_month, pro_generation_reset_at')
-            .eq('id', user.id)
-            .single()
-        const isPro = hasProAccess(profile)
-        const freeUsed = profile?.free_generations_used || 0
+        // ── Plan Limits (Reserve Credit — Atomic RPC) ────────────
+        const { data: quotaResult, error: quotaError } = await supabase
+            .rpc('reserve_generation', { p_user_id: user.id })
 
-        if (!isPro && freeUsed >= 3) {
-            return NextResponse.json({ error: 'Upgrade required', code: 'limit_reached' }, { status: 402 })
+        if (quotaError) {
+            console.error('[Engine] reserve_generation RPC error:', quotaError)
+            return NextResponse.json({ error: 'Could not verify usage quota.', code: 'quota_error' }, { status: 500 })
         }
+
+        const quota = quotaResult as { allowed: boolean; reason: string; remaining: number; limit: number; resets_at?: string }
+
+        if (!quota.allowed) {
+            const errorMsg = quota.reason === 'free_limit_reached'
+                ? 'You have used all 3 free generations. Upgrade to Pro for more!'
+                : `You have reached your ${quota.limit} generation limit for this billing cycle.${quota.resets_at ? ` Resets on ${new Date(quota.resets_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.` : ''}`
+
+            return NextResponse.json({
+                error: errorMsg,
+                code: quota.reason === 'free_limit_reached' ? 'free_limit_reached' : 'pro_limit_reached',
+                remaining: 0,
+                limit: quota.limit,
+                resets_at: quota.resets_at || null,
+            }, { status: 402 })
+        }
+
+        // Track reservation type for release on failure
+        reservationType = quota.reason // 'free' or 'pro'
+        console.log(`[Engine] Credit reserved (${reservationType}). Remaining: ${quota.remaining}/${quota.limit}`)
 
         // ── Parse Input ──────────────────────────────────────────
         const formData = await req.formData()
@@ -455,24 +476,7 @@ export async function POST(req: Request) {
             throw error
         }
 
-        // ── Step 12: Increment Usage ─────────────────────────────
-        if (!isPro) {
-            await supabase.from('profiles').update({
-                free_generations_used: freeUsed + 1
-            }).eq('id', user.id)
-        } else {
-            const now = new Date()
-            const currentMonthCount = profile?.pro_generations_used_month || 0
-            const resetAt = profile?.pro_generation_reset_at ? new Date(profile.pro_generation_reset_at) : null
-            const needsReset = !resetAt || Number.isNaN(resetAt.getTime()) || now >= resetAt
-            const nextResetAt = new Date(now)
-            nextResetAt.setUTCMonth(nextResetAt.getUTCMonth() + 1)
-
-            await supabase.from('profiles').update({
-                pro_generations_used_month: needsReset ? 1 : currentMonthCount + 1,
-                pro_generation_reset_at: nextResetAt.toISOString(),
-            }).eq('id', user.id)
-        }
+        // ── Step 12: Usage already consumed atomically by RPC ────
 
         console.log(`[Engine] Generation complete! ID: ${gen.id}`)
 
@@ -487,6 +491,21 @@ export async function POST(req: Request) {
 
     } catch (error) {
         console.error('[Engine] Fatal error:', error)
+
+        // ── Release reserved credit on failure ───────────────────
+        if (reservationType && userId) {
+            try {
+                const releaseClient = supabase || await createClient()
+                await releaseClient.rpc('release_generation', {
+                    p_user_id: userId,
+                    p_type: reservationType,
+                })
+                console.log(`[Engine] Released ${reservationType} credit for user ${userId} after failed generation`)
+            } catch (releaseErr) {
+                console.error('[Engine] Failed to release credit:', releaseErr)
+            }
+        }
+
         if (isQuotaExceededError(error)) {
             return NextResponse.json({
                 error: 'AI quota exceeded. Please try again later or switch to a paid key.',

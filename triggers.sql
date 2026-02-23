@@ -5,7 +5,7 @@ language plpgsql
 security definer set search_path = public
 as $$
 begin
-  insert into public.profiles (id, email, full_name, avatar_url, plan, free_generations_used)
+  insert into public.profiles (id, email, full_name, avatar_url, plan, free_generations_used_total)
   values (
     new.id,
     new.email,
@@ -26,7 +26,7 @@ create trigger on_auth_user_created
 
 -- 2. BACKFILL existing users who are missing a profile
 -- This inserts a profile for any user in auth.users that doesn't exist in profiles
-insert into public.profiles (id, email, full_name, avatar_url, plan, free_generations_used)
+insert into public.profiles (id, email, full_name, avatar_url, plan, free_generations_used_total)
 select 
   id,
   email,

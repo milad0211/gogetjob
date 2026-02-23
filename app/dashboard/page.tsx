@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
-import { FileText, Plus, Clock, CheckCircle, Zap, Star } from 'lucide-react'
+import { FileText, Plus, Clock, CheckCircle, Zap, Star, Crown, Calendar } from 'lucide-react'
+import { hasProAccess, getPlanLimit, getCurrentUsage, getRemainingGenerations, getPlanLabel } from '@/lib/subscription'
 
 export default async function DashboardPage() {
     const supabase = createClient()
@@ -12,19 +13,24 @@ export default async function DashboardPage() {
         .eq('id', user?.id)
         .single()
 
-    // Mock data for graph to make it look "Pro"
-    const activityData = [4, 2, 5, 1, 3, 6, 4]
-
     const { data: generations } = await (await supabase)
         .from('resume_generations')
         .select('*')
         .eq('user_id', user?.id)
         .order('created_at', { ascending: false })
 
-    const freeUsage = profile?.free_generations_used || 0
-    const isPro = profile?.plan === 'pro'
-    const usageLimit = isPro ? 'Unlimited' : 3
-    const remaining = isPro ? 999 : 3 - freeUsage
+    const isPro = hasProAccess(profile)
+    const planLimit = getPlanLimit(profile)
+    const currentUsage = getCurrentUsage(profile)
+    const remaining = getRemainingGenerations(profile)
+    const planLabel = getPlanLabel(profile)
+    const usagePercent = Math.min(100, (currentUsage / planLimit) * 100)
+    const isLow = remaining <= 3 && remaining > 0
+    const isExhausted = remaining === 0
+
+    const cycleEndsAt = isPro && profile?.pro_cycle_ends_at
+        ? new Date(profile.pro_cycle_ends_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        : null
 
     return (
         <div className="p-8 max-w-7xl mx-auto space-y-8">
@@ -52,24 +58,35 @@ export default async function DashboardPage() {
                         <FileText size={80} />
                     </div>
                     <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
+                        <div className={`p-2.5 rounded-xl ${isExhausted ? 'bg-red-50 text-red-600' : isLow ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600'}`}>
                             <Zap size={20} />
                         </div>
                         <h3 className="font-bold text-slate-700">Generations Left</h3>
                     </div>
                     <div className="flex items-end gap-2 mb-4">
-                        <span className="text-4xl font-extrabold text-slate-900">{isPro ? '∞' : remaining}</span>
-                        <span className="text-slate-400 mb-1 font-medium">/ {usageLimit}</span>
+                        <span className="text-4xl font-extrabold text-slate-900">{remaining}</span>
+                        <span className="text-slate-400 mb-1 font-medium">/ {planLimit}</span>
                     </div>
                     <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
                         <div
-                            className={`h-full rounded-full transition-all duration-1000 ${remaining === 0 && !isPro ? 'bg-red-500' : 'bg-blue-500'}`}
-                            style={{ width: isPro ? '100%' : `${(freeUsage / 3) * 100}%` }}
+                            className={`h-full rounded-full transition-all duration-1000 ${isExhausted ? 'bg-red-500' : isLow ? 'bg-amber-500' : 'bg-blue-500'}`}
+                            style={{ width: `${usagePercent}%` }}
                         ></div>
                     </div>
+                    {cycleEndsAt && (
+                        <div className="flex items-center gap-1.5 mt-3 text-xs text-slate-500">
+                            <Calendar size={12} />
+                            <span>Resets on {cycleEndsAt}</span>
+                        </div>
+                    )}
                     {!isPro && remaining <= 1 && (
                         <Link href="/dashboard/billing" className="text-xs font-bold text-blue-600 mt-3 inline-block hover:underline">
-                            Upgrade for unlimited &rarr;
+                            Upgrade for more &rarr;
+                        </Link>
+                    )}
+                    {isPro && isExhausted && profile?.billing_cycle === 'month' && (
+                        <Link href="/dashboard/billing" className="text-xs font-bold text-indigo-600 mt-3 inline-block hover:underline">
+                            Upgrade to Yearly for 360/year &rarr;
                         </Link>
                     )}
                 </div>
@@ -100,16 +117,18 @@ export default async function DashboardPage() {
                     )}
                     <div className="flex items-center gap-3 mb-4">
                         <div className={`p-2.5 rounded-xl ${isPro ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-slate-900 shadow-lg shadow-orange-500/20' : 'bg-slate-50 text-slate-400'}`}>
-                            {isPro ? <Star size={20} fill="currentColor" /> : <Star size={20} />}
+                            {isPro ? <Crown size={20} /> : <Star size={20} />}
                         </div>
                         <h3 className={`font-bold ${isPro ? 'text-white' : 'text-slate-700'}`}>Current Plan</h3>
                     </div>
                     <div className="mb-4">
-                        <span className="text-2xl font-bold">{isPro ? 'Pro Member' : 'Free Starter'}</span>
+                        <span className="text-2xl font-bold">{planLabel}</span>
                         {isPro && <div className="text-xs font-bold text-green-400 mt-1 flex items-center gap-1"><CheckCircle size={12} /> Active</div>}
                     </div>
                     <p className={`text-sm mb-6 ${isPro ? 'text-slate-300' : 'text-slate-500'}`}>
-                        {isPro ? 'You have access to all premium features, including Cover Letters and Advanced Analysis.' : 'Upgrade to remove limits and unlock AI Cover Letters.'}
+                        {isPro
+                            ? `${planLimit} generations per ${profile?.billing_cycle === 'year' ? 'year' : 'month'}. ${currentUsage} used so far.`
+                            : 'Upgrade to remove limits and unlock AI Cover Letters.'}
                     </p>
                     {!isPro ? (
                         <Link href="/dashboard/billing" className="block text-center bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold py-3 rounded-xl transition shadow-lg hover:shadow-xl hover:-translate-y-0.5">
@@ -118,7 +137,7 @@ export default async function DashboardPage() {
                     ) : (
                         <div className="space-y-2">
                             <div className="flex items-center gap-2 text-xs text-slate-300 bg-slate-800/50 p-2 rounded-lg border border-slate-700">
-                                <CheckCircle size={14} className="text-green-400" /> Unlimited Resumes
+                                <CheckCircle size={14} className="text-green-400" /> {planLimit} Resumes / {profile?.billing_cycle === 'year' ? 'Year' : 'Month'}
                             </div>
                             <div className="flex items-center gap-2 text-xs text-slate-300 bg-slate-800/50 p-2 rounded-lg border border-slate-700">
                                 <CheckCircle size={14} className="text-green-400" /> Cover Letter Generator
@@ -143,7 +162,7 @@ export default async function DashboardPage() {
                         </div>
                         <h3 className="text-lg font-bold text-slate-900 mb-2">No resumes yet</h3>
                         <p className="text-slate-500 mb-6">Create your first tailored resume to see it here.</p>
-                        <Link href="/generate" className="text-blue-600 font-bold hover:underline">
+                        <Link href="/dashboard/generate" className="text-blue-600 font-bold hover:underline">
                             Start Generating &rarr;
                         </Link>
                     </div>

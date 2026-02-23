@@ -284,7 +284,7 @@ export default function Home() {
             <p className="text-lg text-slate-600">Invest in your career for less than the cost of a dinner.</p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto items-stretch">
+          <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto items-stretch">
             {/* Free Plan */}
             <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 flex flex-col hover:border-blue-200 transition relative">
               <div className="mb-8">
@@ -298,10 +298,10 @@ export default function Home() {
 
               <ul className="space-y-4 mb-8 flex-1">
                 {[
-                  "3 AI Resume Generations",
+                  "3 Resume Generations (Lifetime)",
                   "Basic Keyword Matching",
                   "Standard PDF Download",
-                  "Access to Standard Templates"
+                  "Standard Templates"
                 ].map((item, i) => (
                   <li key={i} className="flex items-center gap-3 text-slate-600">
                     <CheckCircle size={18} className="text-blue-600 flex-shrink-0" /> {item}
@@ -314,41 +314,75 @@ export default function Home() {
               </Link>
             </div>
 
-            {/* Pro Plan */}
-            <div className="bg-slate-900 p-8 rounded-3xl shadow-2xl border border-slate-800 text-white flex flex-col relative transform md:-translate-y-4">
-              <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 rounded-t-3xl"></div>
+            {/* Pro Monthly */}
+            <div className="bg-white p-8 rounded-3xl shadow-lg border-2 border-blue-200 flex flex-col relative hover:border-blue-400 transition">
               <div className="absolute -top-4 right-8 bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full border-4 border-slate-50 shadow-sm text-center">
-                MOST POPULAR
+                POPULAR
               </div>
 
               <div className="mb-8">
-                <h3 className="text-xl font-bold mb-2">Pro Access</h3>
-                <p className="text-slate-400 mb-6">For serious job seekers.</p>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">Pro Monthly</h3>
+                <p className="text-slate-500 mb-6">For active job seekers.</p>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-5xl font-extrabold">$50</span>
-                  <span className="text-slate-400">/ month</span>
+                  <span className="text-5xl font-extrabold text-slate-900">$50</span>
+                  <span className="text-slate-500">/ month</span>
                 </div>
                 <p className="text-xs text-slate-500 mt-2">Cancel anytime.</p>
               </div>
 
               <ul className="space-y-4 mb-8 flex-1">
                 {[
-                  "Unlimited Generations",
+                  "30 Resume Generations / Month",
                   "Advanced Gap Analysis & Scoring",
-                  "Cover Letter Generator (Coming Soon)",
+                  "Cover Letter Generator",
                   "Priority Support",
-                  "Exclusive 'Recruiter-Approved' Templates",
-                  "Competitor Keyword Insights"
+                  "Premium Templates"
                 ].map((item, i) => (
-                  <li key={i} className="flex items-center gap-3 text-slate-300">
-                    <CheckCircle size={18} className="text-blue-400 flex-shrink-0" />
-                    <span className={i > 3 ? "font-semibold text-white" : ""}>{item}</span>
+                  <li key={i} className="flex items-center gap-3 text-slate-700">
+                    <CheckCircle size={18} className="text-blue-600 flex-shrink-0" /> {item}
                   </li>
                 ))}
               </ul>
 
-              <Link href="/login" className="block w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition shadow-lg shadow-blue-500/30 text-center hover:scale-[1.02]">
-                Upgrade to Pro
+              <Link href="/login" className="block w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition shadow-lg shadow-blue-500/20 text-center hover:scale-[1.02]">
+                Subscribe Monthly
+              </Link>
+            </div>
+
+            {/* Pro Yearly */}
+            <div className="bg-slate-900 p-8 rounded-3xl shadow-2xl border border-slate-800 text-white flex flex-col relative transform md:-translate-y-4">
+              <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-t-3xl"></div>
+              <div className="absolute -top-4 right-6 bg-gradient-to-r from-indigo-500 to-purple-500 text-white text-xs font-bold px-3 py-1 rounded-full border-4 border-slate-50 shadow-sm text-center">
+                BEST VALUE
+              </div>
+
+              <div className="mb-8">
+                <h3 className="text-xl font-bold mb-2">Pro Yearly</h3>
+                <p className="text-slate-400 mb-6">For career changers & power users.</p>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-5xl font-extrabold">$400</span>
+                  <span className="text-slate-400">/ year</span>
+                </div>
+                <p className="text-xs text-green-400 mt-2 font-bold">Save 33% vs Monthly!</p>
+              </div>
+
+              <ul className="space-y-4 mb-8 flex-1">
+                {[
+                  "360 Resume Generations / Year",
+                  "All Pro Monthly Features",
+                  "Exclusive Recruiter-Approved Templates",
+                  "Priority Support",
+                  "Competitor Keyword Insights"
+                ].map((item, i) => (
+                  <li key={i} className="flex items-center gap-3 text-slate-300">
+                    <CheckCircle size={18} className="text-indigo-400 flex-shrink-0" />
+                    <span className={i > 2 ? "font-semibold text-white" : ""}>{item}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <Link href="/login" className="block w-full bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white font-bold py-4 rounded-xl transition shadow-lg shadow-indigo-500/30 text-center hover:scale-[1.02]">
+                Subscribe Yearly — Save 33%
               </Link>
             </div>
           </div>

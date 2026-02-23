@@ -8,7 +8,7 @@ security definer set search_path = public
 as $$
 begin
   -- Use INSERT ... ON CONFLICT DO UPDATE to handle both new and returning users
-  insert into public.profiles (id, email, full_name, avatar_url, plan, free_generations_used, is_admin)
+  insert into public.profiles (id, email, full_name, avatar_url, plan, free_generations_used_total, is_admin)
   values (
     new.id,
     new.email,
@@ -35,7 +35,7 @@ create trigger on_auth_user_created
   for each row execute procedure public.handle_new_user();
 
 -- BACKFILL: Create profiles for existing users who don't have one
-insert into public.profiles (id, email, full_name, avatar_url, plan, free_generations_used, is_admin)
+insert into public.profiles (id, email, full_name, avatar_url, plan, free_generations_used_total, is_admin)
 select 
   id,
   email,
