@@ -76,11 +76,14 @@ export default async function BillingPage() {
                         </div>
                     )}
 
+
+
                     {isPro && !isCanceled && (
                         <div className="bg-green-50 border border-green-100 rounded-xl p-6 text-center">
                             <p className="text-green-800 font-medium mb-2">Your subscription is active. Enjoy {planLimit} resume generations per {profile?.billing_cycle === 'year' ? 'year' : 'month'}!</p>
                             {profile?.billing_cycle === 'month' && (
-                                <a href={YEARLY_CHECKOUT} className="inline-flex items-center gap-2 text-indigo-600 font-bold text-sm hover:underline mt-2">
+                                // <a href={YEARLY_CHECKOUT} className="inline-flex items-center gap-2 text-indigo-600 font-bold text-sm hover:underline mt-2">
+                                <a href="/api/polar/portal" className="inline-flex items-center gap-2 text-indigo-600 font-bold text-sm hover:underline mt-2">
                                     <Crown size={14} /> Switch to Yearly and save 33% <ArrowRight size={14} />
                                 </a>
                             )}
