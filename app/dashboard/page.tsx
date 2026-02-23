@@ -1,7 +1,15 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { FileText, Plus, Clock, CheckCircle, Zap, Star, Crown, Calendar } from 'lucide-react'
-import { hasProAccess, getPlanLimit, getCurrentUsage, getRemainingGenerations, getPlanLabel } from '@/lib/subscription'
+import {
+    hasProAccess,
+    getPlanLimit,
+    getCurrentUsage,
+    getRemainingGenerations,
+    getPlanLabel,
+    getCoverLetterPlanLimit,
+    getCoverLetterCurrentUsage,
+} from '@/lib/subscription'
 
 type ScoreSummary = {
     before: number | null
@@ -127,8 +135,10 @@ export default async function DashboardPage() {
     const planLimit = getPlanLimit(profile)
     const currentUsage = getCurrentUsage(profile)
     const remaining = getRemainingGenerations(profile)
+    const coverLetterLimit = getCoverLetterPlanLimit(profile)
+    const coverLetterUsed = getCoverLetterCurrentUsage(profile)
     const planLabel = getPlanLabel(profile)
-    const usagePercent = Math.min(100, (currentUsage / planLimit) * 100)
+    const usagePercent = planLimit > 0 ? Math.min(100, (currentUsage / planLimit) * 100) : 0
     const isLow = remaining <= 3 && remaining > 0
     const isExhausted = remaining === 0
 
@@ -244,7 +254,7 @@ export default async function DashboardPage() {
                                 <CheckCircle size={14} className="text-green-400" /> {planLimit} Resumes / {profile?.billing_cycle === 'year' ? 'Year' : 'Month'}
                             </div>
                             <div className="flex items-center gap-2 text-xs text-slate-300 bg-slate-800/50 p-2 rounded-lg border border-slate-700">
-                                <CheckCircle size={14} className="text-green-400" /> Cover Letter Generator
+                                <CheckCircle size={14} className="text-green-400" /> {coverLetterUsed} / {coverLetterLimit} Cover Letters
                             </div>
                         </div>
                     )}

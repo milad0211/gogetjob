@@ -29,10 +29,12 @@ export async function updateUserPlan(userId: string, plan: 'free' | 'pro') {
         updates.pro_cycle_started_at = now.toISOString()
         updates.pro_cycle_ends_at = oneYearFromNow.toISOString()
         updates.pro_generations_used_cycle = 0
+        updates.pro_cover_letters_used_cycle = 0
     } else {
         // Downgrade: revoke Pro access
         updates.billing_cycle = null
         updates.pro_access_until = null
+        updates.pro_cover_letters_used_cycle = 0
     }
 
     const { error } = await supabase.from('profiles').update(updates).eq('id', userId)

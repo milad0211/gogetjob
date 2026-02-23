@@ -138,6 +138,7 @@ export async function POST(req: NextRequest) {
             const planChanged = existingProfile?.polar_product_id !== productId && productId
             if (periodChanged || planChanged) {
                 updates.pro_generations_used_cycle = 0
+                updates.pro_cover_letters_used_cycle = 0
             }
 
             await supabase.from('profiles').update(updates).eq('id', userId)
@@ -190,6 +191,7 @@ export async function POST(req: NextRequest) {
                 subscription_status: 'inactive',
                 pro_access_until: new Date().toISOString(),
                 billing_cycle: null,
+                pro_cover_letters_used_cycle: 0,
             }).eq('id', userId)
 
             console.log(`[Webhook] User ${userId}: REFUNDED/REVOKED — Pro access revoked immediately`)

@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { hasProAccess } from '@/lib/subscription'
+import { hasProAccess, getCoverLetterPlanLimit, getCoverLetterCurrentUsage, getCoverLetterRemaining } from '@/lib/subscription'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, CheckCircle, AlertTriangle, TrendingUp, ShieldAlert } from 'lucide-react'
@@ -28,11 +28,22 @@ export default async function ResumePage({
 
     const { data: profile } = await supabase
         .from('profiles')
-        .select('plan, subscription_status, pro_access_until')
+        .select('plan, subscription_status, pro_access_until, billing_cycle, pro_cover_letters_used_cycle, pro_cycle_ends_at')
         .eq('id', user.id)
         .single()
 
     const isPro = hasProAccess(profile)
+    const coverLetterLimit = getCoverLetterPlanLimit(profile)
+    const coverLetterUsed = getCoverLetterCurrentUsage(profile)
+    const coverLetterRemaining = getCoverLetterRemaining(profile)
+    const coverLetterUsage = isPro
+        ? {
+            used: coverLetterUsed,
+            limit: coverLetterLimit,
+            remaining: coverLetterRemaining,
+            resetsAt: profile?.pro_cycle_ends_at ?? null,
+        }
+        : null
 
     const analysis = generation.analysis_json as FullAnalysis | null
 
@@ -262,7 +273,12 @@ export default async function ResumePage({
 
                     {/* Cover Letter */}
                     <div className="flex-1 min-h-[350px]">
-                        <CoverLetterGenerator resumeId={generation.id} isPro={!!isPro} />
+                        <CoverLetterGenerator
+                            resumeId={generation.id}
+                            isPro={!!isPro}
+                            initialCoverLetter={generation.cover_letter_text || ''}
+                            initialUsage={coverLetterUsage}
+                        />
                     </div>
                 </div>
 

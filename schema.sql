@@ -14,6 +14,7 @@ create table profiles (
   subscription_status text default 'inactive' check (subscription_status in ('active', 'inactive', 'past_due', 'canceled', 'trialing')),
   billing_cycle text null check (billing_cycle in ('month', 'year')),
   pro_generations_used_cycle int default 0,
+  pro_cover_letters_used_cycle int default 0,
   pro_cycle_started_at timestamp with time zone,
   pro_cycle_ends_at timestamp with time zone,
   pro_access_until timestamp with time zone,
@@ -71,6 +72,10 @@ create policy "Users can view own generations." on resume_generations
 
 create policy "Users can insert own generations." on resume_generations
   for insert with check (auth.uid() = user_id);
+
+create policy "Users can update own generations." on resume_generations
+  for update using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
 
 -- Function to handle new user signup
 create or replace function public.handle_new_user()

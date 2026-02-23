@@ -1,10 +1,22 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { hasProAccess } from '@/lib/subscription'
+import {
+    hasProAccess,
+    getCoverLetterProMonthlyLimit,
+    getCoverLetterProYearlyLimit,
+} from '@/lib/subscription'
 import { generateCoverLetter } from '@/lib/resume-engine/ai'
 import { parseJobDescription } from '@/lib/resume-engine/job-parser'
 import type { CanonicalResume } from '@/lib/resume-engine/types'
 import type { JobSpec } from '@/lib/resume-engine/types'
+
+type CoverLetterQuota = {
+    allowed: boolean
+    reason: string
+    remaining: number
+    limit: number
+    resets_at?: string
+}
 
 function isQuotaExceededError(error: unknown): boolean {
     if (!error || typeof error !== 'object') return false
@@ -44,15 +56,13 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Check Pro Status
     const { data: profile } = await supabase
         .from('profiles')
-        .select('plan, subscription_status, pro_access_until')
+        .select('plan, subscription_status, pro_access_until, billing_cycle, pro_cycle_started_at, pro_cycle_ends_at')
         .eq('id', user.id)
         .single()
 
     const isPro = hasProAccess(profile)
-
     if (!isPro) {
         return NextResponse.json(
             { error: 'Cover Letter generation is a Pro feature. Please upgrade.' },
@@ -60,60 +70,151 @@ export async function POST(request: Request) {
         )
     }
 
+    const monthlyLimit = getCoverLetterProMonthlyLimit()
+    const yearlyLimit = getCoverLetterProYearlyLimit()
+
+    let reserved = false
     try {
+        const { data: quotaResult, error: quotaError } = await supabase.rpc('reserve_cover_letter', {
+            p_user_id: user.id,
+            p_pro_monthly_limit: monthlyLimit,
+            p_pro_yearly_limit: yearlyLimit,
+        })
+
+        let quota: CoverLetterQuota
+        if (quotaError) {
+            // Backward compatibility when SQL migration is not applied yet.
+            if (quotaError.message?.includes('function public.reserve_cover_letter')) {
+                let usageQuery = supabase
+                    .from('resume_generations')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('user_id', user.id)
+                    .not('cover_letter_text', 'is', null)
+
+                if (profile?.pro_cycle_started_at) {
+                    usageQuery = usageQuery.gte('created_at', profile.pro_cycle_started_at)
+                }
+
+                const { count, error: countError } = await usageQuery
+                if (countError) {
+                    console.error('[CoverLetter] Fallback quota count error:', countError)
+                    return NextResponse.json(
+                        { error: 'Could not verify cover letter quota.', code: 'quota_error' },
+                        { status: 500 }
+                    )
+                }
+
+                const used = count ?? 0
+                const limit = profile?.billing_cycle === 'year' ? yearlyLimit : monthlyLimit
+                quota = {
+                    allowed: used < limit,
+                    reason: used < limit ? 'pro' : 'cover_letter_limit_reached',
+                    remaining: Math.max(0, limit - used - 1),
+                    limit,
+                    resets_at: profile?.pro_cycle_ends_at || undefined,
+                }
+            } else {
+                console.error('[CoverLetter] reserve_cover_letter RPC error:', quotaError)
+                return NextResponse.json(
+                    { error: 'Could not verify cover letter quota.', code: 'quota_error' },
+                    { status: 500 }
+                )
+            }
+        } else {
+            quota = quotaResult as CoverLetterQuota
+        }
+
+        if (!quota.allowed) {
+            const message = `You have reached your ${quota.limit} cover letter limit for this billing cycle.${quota.resets_at ? ` Resets on ${new Date(quota.resets_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.` : ''}`
+            return NextResponse.json(
+                {
+                    error: message,
+                    code: 'cover_letter_limit_reached',
+                    remaining: 0,
+                    limit: quota.limit,
+                    resets_at: quota.resets_at || null,
+                },
+                { status: 402 }
+            )
+        }
+
+        reserved = !quotaError
         const { resumeId } = await request.json()
 
-        // Fetch the generation data
-        const { data: gen } = await supabase
+        const { data: generation } = await supabase
             .from('resume_generations')
             .select('resume_generated_text, job_text')
             .eq('id', resumeId)
             .eq('user_id', user.id)
             .single()
 
-        if (!gen) {
-            return NextResponse.json({ error: 'Resume generation not found' }, { status: 404 })
+        if (!generation) {
+            throw new Error('Resume generation not found')
         }
 
-        // Parse the optimized resume from DB
         let optimizedResume: CanonicalResume
         try {
-            optimizedResume = JSON.parse(gen.resume_generated_text) as CanonicalResume
+            optimizedResume = JSON.parse(generation.resume_generated_text) as CanonicalResume
         } catch {
-            return NextResponse.json({ error: 'Could not parse saved resume data' }, { status: 500 })
+            throw new Error('Could not parse saved resume data')
         }
 
-        // Parse job description for structured context
-        const jobSpec = await parseJobDescription(gen.job_text, { preferHeuristic: true })
+        const jobSpec = await parseJobDescription(generation.job_text, { preferHeuristic: true })
 
-        // Generate cover letter with structured context
         let coverLetter: string
         try {
-            coverLetter = await generateCoverLetter(optimizedResume, jobSpec, gen.job_text)
+            coverLetter = await generateCoverLetter(optimizedResume, jobSpec, generation.job_text)
         } catch (error) {
             if (!isQuotaExceededError(error)) throw error
             coverLetter = fallbackCoverLetter(optimizedResume, jobSpec)
         }
 
-        // Save to DB
-        await supabase
+        const { data: savedRow, error: saveError } = await supabase
             .from('resume_generations')
             .update({ cover_letter_text: coverLetter })
             .eq('id', resumeId)
+            .eq('user_id', user.id)
+            .select('id')
+            .maybeSingle()
 
-        return NextResponse.json({ coverLetter })
+        if (saveError) {
+            throw new Error(saveError.message || 'Failed to persist generated cover letter')
+        }
 
+        if (!savedRow) {
+            throw new Error('Generated cover letter could not be saved. Missing UPDATE policy on resume_generations.')
+        }
+
+        return NextResponse.json({
+            coverLetter,
+            remaining: quota.remaining,
+            limit: quota.limit,
+            resets_at: quota.resets_at || null,
+        })
     } catch (error) {
         console.error('[CoverLetter] Error:', error)
+
+        if (reserved) {
+            try {
+                await supabase.rpc('release_cover_letter', { p_user_id: user.id })
+            } catch (releaseError) {
+                console.error('[CoverLetter] Failed to release reserved quota:', releaseError)
+            }
+        }
+
         if (isQuotaExceededError(error)) {
             return NextResponse.json(
                 { error: 'AI quota exceeded. Please try again later.', code: 'ai_quota_exceeded' },
                 { status: 429 }
             )
         }
-        return NextResponse.json(
-            { error: 'Failed to generate cover letter' },
-            { status: 500 }
-        )
+
+        const message = error instanceof Error ? error.message : 'Failed to generate cover letter'
+        const status = message === 'Resume generation not found'
+            ? 404
+            : message.includes('Missing UPDATE policy')
+                ? 403
+                : 500
+        return NextResponse.json({ error: message }, { status })
     }
 }

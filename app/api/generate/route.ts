@@ -10,6 +10,7 @@ import type { FullAnalysis, EngineMetadata, ParseResult } from '@/lib/resume-eng
 import type { CanonicalResume } from '@/lib/resume-engine/types'
 import type { EvidenceMap, GapReport, JobSpec } from '@/lib/resume-engine/types'
 import { ENGINE_VERSION, PROMPT_VERSION, MODEL_NAME, CONFIDENCE_THRESHOLDS } from '@/lib/resume-engine/types'
+import { getResumeFreeLimit, getResumeProMonthlyLimit, getResumeProYearlyLimit } from '@/lib/subscription'
 
 export const runtime = 'nodejs'
 
@@ -213,8 +214,29 @@ export async function POST(req: Request) {
         userId = user.id
 
         // ── Plan Limits (Reserve Credit — Atomic RPC) ────────────
-        const { data: quotaResult, error: quotaError } = await supabase
-            .rpc('reserve_generation', { p_user_id: user.id })
+        const freeResumeLimit = getResumeFreeLimit()
+        const proResumeMonthlyLimit = getResumeProMonthlyLimit()
+        const proResumeYearlyLimit = getResumeProYearlyLimit()
+
+        let quotaResult: unknown
+        let quotaError: { message?: string } | null = null
+
+        // New signature supports env-driven limits.
+        const newQuotaCall = await supabase.rpc('reserve_generation', {
+            p_user_id: user.id,
+            p_free_limit: freeResumeLimit,
+            p_pro_monthly_limit: proResumeMonthlyLimit,
+            p_pro_yearly_limit: proResumeYearlyLimit,
+        })
+        quotaResult = newQuotaCall.data
+        quotaError = newQuotaCall.error
+
+        // Backward compatibility in case SQL function wasn't updated yet.
+        if (quotaError?.message?.includes('function public.reserve_generation')) {
+            const legacyQuotaCall = await supabase.rpc('reserve_generation', { p_user_id: user.id })
+            quotaResult = legacyQuotaCall.data
+            quotaError = legacyQuotaCall.error
+        }
 
         if (quotaError) {
             console.error('[Engine] reserve_generation RPC error:', quotaError)
@@ -225,7 +247,7 @@ export async function POST(req: Request) {
 
         if (!quota.allowed) {
             const errorMsg = quota.reason === 'free_limit_reached'
-                ? 'You have used all 3 free generations. Upgrade to Pro for more!'
+                ? `You have used all ${freeResumeLimit} free generations. Upgrade to Pro for more!`
                 : `You have reached your ${quota.limit} generation limit for this billing cycle.${quota.resets_at ? ` Resets on ${new Date(quota.resets_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.` : ''}`
 
             return NextResponse.json({
