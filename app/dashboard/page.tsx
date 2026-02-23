@@ -3,6 +3,110 @@ import Link from 'next/link'
 import { FileText, Plus, Clock, CheckCircle, Zap, Star, Crown, Calendar } from 'lucide-react'
 import { hasProAccess, getPlanLimit, getCurrentUsage, getRemainingGenerations, getPlanLabel } from '@/lib/subscription'
 
+type ScoreSummary = {
+    before: number | null
+    after: number | null
+    improvement: number | null
+}
+
+function normalizeScore(value: unknown): number | null {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return null
+    return Math.max(0, Math.min(100, Math.round(value)))
+}
+
+function extractScoreSummary(analysis: unknown): ScoreSummary {
+    if (!analysis || typeof analysis !== 'object') {
+        return { before: null, after: null, improvement: null }
+    }
+
+    const raw = analysis as Record<string, unknown>
+    const legacy = normalizeScore(raw.match_score)
+
+    const beforeScoreObj = raw.beforeScore && typeof raw.beforeScore === 'object'
+        ? raw.beforeScore as Record<string, unknown>
+        : null
+    const afterScoreObj = raw.afterScore && typeof raw.afterScore === 'object'
+        ? raw.afterScore as Record<string, unknown>
+        : null
+
+    const before = normalizeScore(beforeScoreObj?.total) ?? legacy
+    const after = normalizeScore(afterScoreObj?.total) ?? legacy
+
+    return {
+        before,
+        after,
+        improvement: before !== null && after !== null ? after - before : null,
+    }
+}
+
+function formatJobHost(rawUrl?: string | null): string {
+    if (!rawUrl) return 'Job Description'
+    try {
+        return new URL(rawUrl).hostname.replace(/^www\./, '')
+    } catch {
+        return 'Job Description'
+    }
+}
+
+function MatchScoreCell({ analysis }: { analysis: unknown }) {
+    const score = extractScoreSummary(analysis)
+    const finalScore = score.after ?? score.before
+
+    if (finalScore === null) return <span className="text-slate-400 text-sm">-</span>
+
+    const tone = finalScore >= 70 ? 'emerald' : finalScore >= 50 ? 'amber' : 'red'
+    const toneClass = tone === 'emerald'
+        ? 'text-emerald-700'
+        : tone === 'amber'
+            ? 'text-amber-700'
+            : 'text-red-700'
+    const barClass = tone === 'emerald'
+        ? 'bg-emerald-500'
+        : tone === 'amber'
+            ? 'bg-amber-500'
+            : 'bg-red-500'
+
+    if (score.before !== null && score.after !== null) {
+        return (
+            <div className="min-w-[160px]">
+                <div className="flex items-center justify-between text-[11px] font-semibold mb-1.5">
+                    <span className="text-slate-400">{score.before}%</span>
+                    {score.improvement !== null && score.improvement !== 0 ? (
+                        <span className={score.improvement > 0 ? 'text-emerald-600' : 'text-red-600'}>
+                            {score.improvement > 0 ? `+${score.improvement}` : score.improvement}
+                        </span>
+                    ) : (
+                        <span className="text-slate-300">No change</span>
+                    )}
+                    <span className={toneClass}>{score.after}%</span>
+                </div>
+                <div className="relative h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                        className="absolute inset-y-0 left-0 bg-slate-300/80"
+                        style={{ width: `${score.before}%` }}
+                    />
+                    <div
+                        className={`absolute inset-y-0 left-0 rounded-full ${barClass}`}
+                        style={{ width: `${score.after}%` }}
+                    />
+                </div>
+            </div>
+        )
+    }
+
+    return (
+        <div className="flex items-center gap-2">
+            <div className="w-16 bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                <div
+                    className={`h-full rounded-full ${barClass}`}
+                    style={{ width: `${finalScore}%` }}
+                />
+            </div>
+            <span className={`text-xs font-bold ${toneClass}`}>{finalScore}%</span>
+        </div>
+    )
+}
+
 export default async function DashboardPage() {
     const supabase = createClient()
     const { data: { user } } = await (await supabase).auth.getUser()
@@ -187,7 +291,7 @@ export default async function DashboardPage() {
                                                     PDF
                                                 </div>
                                                 <p className="font-medium text-slate-900 truncate max-w-[200px]">
-                                                    {gen.job_url ? new URL(gen.job_url).hostname : 'Job Description'}
+                                                    {formatJobHost(gen.job_url)}
                                                 </p>
                                             </div>
                                         </td>
@@ -202,17 +306,7 @@ export default async function DashboardPage() {
                                             </span>
                                         </td>
                                         <td className="px-8 py-5">
-                                            {gen.analysis_json?.match_score ? (
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-16 bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                                                        <div
-                                                            className={`h-full rounded-full ${gen.analysis_json.match_score > 70 ? 'bg-emerald-500' : 'bg-amber-500'}`}
-                                                            style={{ width: `${gen.analysis_json.match_score}%` }}
-                                                        ></div>
-                                                    </div>
-                                                    <span className="text-xs font-bold">{gen.analysis_json.match_score}%</span>
-                                                </div>
-                                            ) : '-'}
+                                            <MatchScoreCell analysis={gen.analysis_json} />
                                         </td>
                                         <td className="px-8 py-5">
                                             <Link href={`/dashboard/resume/${gen.id}`} className="text-sm font-bold text-blue-600 hover:text-blue-800 transition">

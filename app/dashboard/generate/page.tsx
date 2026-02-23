@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { UploadStep } from './_components/UploadStep'
 import { JobDescriptionStep } from './_components/JobDescriptionStep'
 import { GeneratingStep } from './_components/GeneratingStep'
@@ -24,17 +24,14 @@ interface LimitInfo {
 export default function GeneratePage() {
     const [step, setStep] = useState<GenerationState>('upload')
     const [file, setFile] = useState<File | null>(null)
-    const [photo, setPhoto] = useState<string | null>(null)
     const [jobMode, setJobMode] = useState<'url' | 'paste'>('url')
     const [jobValue, setJobValue] = useState('')
-    const [isSubmitting, setIsSubmitting] = useState(false)
     const [limitReached, setLimitReached] = useState<LimitInfo | null>(null)
 
     const router = useRouter()
 
     const handleGeneration = async () => {
         if (!file || !jobValue) return
-        setIsSubmitting(true)
         setStep('generating')
         setLimitReached(null)
 
@@ -42,7 +39,6 @@ export default function GeneratePage() {
         formData.append('file', file)
         formData.append('jobMode', jobMode)
         formData.append(jobMode === 'url' ? 'jobUrl' : 'jobText', jobValue)
-        if (photo) formData.append('photoDataUrl', photo)
 
         try {
             const res = await fetch('/api/generate', {
@@ -78,8 +74,6 @@ export default function GeneratePage() {
             const message = error instanceof Error ? error.message : 'An error occurred. Please try again.'
             alert(message)
             setStep('job')
-        } finally {
-            setIsSubmitting(false)
         }
     }
 
@@ -103,7 +97,7 @@ export default function GeneratePage() {
 
                 {/* Limit Reached Banner */}
                 {limitReached && (
-                    <LimitReachedBanner info={limitReached} onDismiss={() => setLimitReached(null)} />
+                    <LimitReachedBanner info={limitReached} />
                 )}
 
                 {/* Content */}
@@ -112,8 +106,6 @@ export default function GeneratePage() {
                         <UploadStep
                             file={file}
                             setFile={setFile}
-                            photo={photo}
-                            setPhoto={setPhoto}
                             onNext={() => setStep('job')}
                         />
                     )}
@@ -153,7 +145,7 @@ function StepIndicator({ number, title, active, completed }: { number: number, t
     )
 }
 
-function LimitReachedBanner({ info, onDismiss }: { info: LimitInfo; onDismiss: () => void }) {
+function LimitReachedBanner({ info }: { info: LimitInfo }) {
     const isFree = info.code === 'free_limit_reached'
 
     return (

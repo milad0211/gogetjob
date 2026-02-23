@@ -390,7 +390,7 @@ export default function Home() {
       </section>
 
       {/* FAQ */}
-      <section className="py-24 bg-white">
+      <section id="faq" className="py-24 bg-white">
         <div className="max-w-3xl mx-auto px-6">
           <h2 className="text-3xl md:text-4xl font-bold text-center mb-12">Frequently Asked Questions</h2>
           <div className="space-y-4">
@@ -456,10 +456,10 @@ export default function Home() {
           <div>
             <h4 className="text-white font-bold mb-6">Product</h4>
             <ul className="space-y-3 text-sm">
-              <li><a href="#" className="hover:text-white transition">Features</a></li>
-              <li><a href="#" className="hover:text-white transition">Pricing</a></li>
-              <li><a href="#" className="hover:text-white transition">Success Stories</a></li>
-              <li><a href="#" className="hover:text-white transition">FAQ</a></li>
+              <li><a href="#how-it-works" className="hover:text-white transition">Features</a></li>
+              <li><a href="#pricing" className="hover:text-white transition">Pricing</a></li>
+              <li><a href="#testimonials" className="hover:text-white transition">Success Stories</a></li>
+              <li><a href="#faq" className="hover:text-white transition">FAQ</a></li>
             </ul>
           </div>
 
@@ -469,16 +469,16 @@ export default function Home() {
               <li><a href="#" className="hover:text-white transition">About Us</a></li>
               <li><a href="#" className="hover:text-white transition">Careers</a></li>
               <li><a href="#" className="hover:text-white transition">Blog</a></li>
-              <li><a href="#" className="hover:text-white transition">Contact</a></li>
+              <li><Link href="/contact" className="hover:text-white transition">Contact</Link></li>
             </ul>
           </div>
 
           <div>
             <h4 className="text-white font-bold mb-6">Legal</h4>
             <ul className="space-y-3 text-sm">
-              <li><a href="#" className="hover:text-white transition">Privacy Policy</a></li>
-              <li><a href="#" className="hover:text-white transition">Terms of Service</a></li>
-              <li><a href="#" className="hover:text-white transition">Cookie Policy</a></li>
+              <li><Link href="/privacy-policy" className="hover:text-white transition">Privacy Policy</Link></li>
+              <li><Link href="/terms" className="hover:text-white transition">Terms of Service</Link></li>
+              <li><Link href="/privacy-policy#cookies" className="hover:text-white transition">Cookie Policy</Link></li>
             </ul>
           </div>
         </div>

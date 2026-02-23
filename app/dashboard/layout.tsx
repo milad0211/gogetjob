@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { LayoutDashboard, FileText, CreditCard, LogOut, PlusCircle } from 'lucide-react'
+import { hasProAccess } from '@/lib/subscription'
 
 export default async function DashboardLayout({
     children,
@@ -23,6 +24,8 @@ export default async function DashboardLayout({
         .select('*')
         .eq('id', user.id)
         .single()
+
+    const isPro = hasProAccess(profile)
 
     return (
         <div className="flex h-screen bg-slate-50">
@@ -59,7 +62,7 @@ export default async function DashboardLayout({
                     <div className="pt-4 pb-2">
                         <p className="px-4 text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Tools</p>
                         <div className="relative group">
-                            {profile?.plan === 'pro' ? (
+                            {isPro ? (
                                 <Link
                                     href="/dashboard/cover-letter"
                                     className="flex items-center gap-3 px-4 py-3 text-slate-700 rounded-xl hover:bg-slate-50 transition"
@@ -99,7 +102,7 @@ export default async function DashboardLayout({
                                 {profile?.full_name || user.email?.split('@')[0]}
                             </p>
                             <p className="text-xs text-slate-500 truncate capitalize">
-                                {profile?.plan === 'pro' ? 'Pro Member' : 'Free Plan'}
+                                {isPro ? 'Pro Member' : 'Free Plan'}
                             </p>
                         </div>
                     </div>

@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     // Check Pro Status
     const { data: profile } = await supabase
         .from('profiles')
-        .select('plan, subscription_status')
+        .select('plan, subscription_status, pro_access_until')
         .eq('id', user.id)
         .single()
 
