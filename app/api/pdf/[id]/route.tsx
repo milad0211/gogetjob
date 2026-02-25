@@ -26,12 +26,23 @@ export async function GET(
         return new NextResponse('Unauthorized', { status: 401 })
     }
 
-    const { data: generation } = await supabase
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_admin')
+        .eq('id', user.id)
+        .single()
+
+    const isAdmin = !!profile?.is_admin
+    let generationQuery = supabase
         .from('resume_generations')
         .select('resume_generated_text, analysis_json')
         .eq('id', id)
-        .eq('user_id', user.id)
-        .single()
+
+    if (!isAdmin) {
+        generationQuery = generationQuery.eq('user_id', user.id)
+    }
+
+    const { data: generation } = await generationQuery.single()
 
     if (!generation) {
         return new NextResponse('Not Found', { status: 404 })

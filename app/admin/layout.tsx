@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { LayoutDashboard, Users, LogOut, Activity } from 'lucide-react'
+import { ArrowUpRight, LogOut, ShieldCheck } from 'lucide-react'
+import { AdminNavLinks } from './_components/AdminNavLinks'
 
 export default async function AdminLayout({
     children,
@@ -20,7 +21,7 @@ export default async function AdminLayout({
 
     const { data: profile } = await supabase
         .from('profiles')
-        .select('is_admin')
+        .select('is_admin, full_name, email')
         .eq('id', user.id)
         .single()
 
@@ -28,62 +29,76 @@ export default async function AdminLayout({
         redirect('/dashboard')
     }
 
+    const displayName = profile?.full_name || user.email?.split('@')[0] || 'Admin'
+    const displayEmail = profile?.email || user.email || ''
+
     return (
-        <div className="flex h-screen bg-slate-100 font-sans text-slate-900">
-            {/* Admin Sidebar */}
-            <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col">
-                <div className="p-6 border-b border-slate-800">
-                    <Link href="/admin" className="flex items-center gap-2 text-white">
-                        <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center font-bold">A</div>
-                        <span className="text-xl font-bold">Admin Panel</span>
-                    </Link>
-                </div>
-
-                <nav className="flex-1 px-4 py-6 space-y-2">
-                    <Link
-                        href="/admin"
-                        className="flex items-center gap-3 px-4 py-3 text-white bg-slate-800 rounded-xl transition hover:bg-slate-700"
-                    >
-                        <LayoutDashboard size={20} />
-                        <span className="font-medium">Overview</span>
-                    </Link>
-                    <Link
-                        href="/admin/users"
-                        className="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition"
-                    >
-                        <Users size={20} />
-                        <span className="font-medium">Users</span>
-                    </Link>
-                    <Link
-                        href="/admin/activity"
-                        className="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition"
-                    >
-                        <Activity size={20} />
-                        <span className="font-medium">Activity</span>
-                    </Link>
-                </nav>
-
-                <div className="p-4 border-t border-slate-800">
-                    <div className="flex items-center gap-3 px-4 py-3 mb-4">
-                        <div className="w-8 h-8 rounded-full bg-red-900 flex items-center justify-center text-red-200 text-xs font-bold">
-                            AD
+        <div className="min-h-screen bg-slate-100 text-slate-900">
+            <div className="mx-auto flex min-h-screen max-w-[1720px]">
+                <aside className="hidden w-72 flex-col border-r border-slate-800 bg-gradient-to-b from-slate-950 via-slate-900 to-slate-900 p-5 text-slate-200 lg:flex">
+                    <Link href="/admin" className="rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:bg-white/10">
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 font-black text-white">
+                                A
+                            </div>
+                            <div>
+                                <p className="text-lg font-extrabold leading-tight text-white">Admin Console</p>
+                                <p className="text-xs text-slate-400">Operations and governance</p>
+                            </div>
                         </div>
-                        <div>
-                            <p className="text-sm font-bold text-white">Administrator</p>
-                            <p className="text-xs text-slate-500">Super User</p>
-                        </div>
+                    </Link>
+
+                    <div className="mt-6">
+                        <p className="mb-2 px-1 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Control Center</p>
+                        <AdminNavLinks />
                     </div>
-                    <Link href="/dashboard" className="flex items-center gap-3 px-4 py-2 text-sm text-slate-400 hover:text-white transition">
-                        <LogOut size={16} />
-                        <span>Exit to App</span>
-                    </Link>
-                </div>
-            </aside>
 
-            {/* Main Content */}
-            <main className="flex-1 overflow-y-auto p-8">
-                {children}
-            </main>
+                    <div className="mt-6 rounded-2xl border border-slate-700 bg-slate-800/60 p-4">
+                        <p className="text-xs font-semibold text-slate-300">Need user perspective?</p>
+                        <Link href="/dashboard" className="mt-2 inline-flex items-center gap-1 text-sm font-bold text-blue-300 hover:text-blue-200">
+                            Open Product Dashboard
+                            <ArrowUpRight size={14} />
+                        </Link>
+                    </div>
+
+                    <div className="mt-auto rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-700 text-sm font-bold text-white">
+                                {displayName.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-white">{displayName}</p>
+                                <p className="truncate text-xs text-slate-400">{displayEmail}</p>
+                            </div>
+                        </div>
+                        <form action="/auth/signout" method="post" className="mt-3">
+                            <button className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:border-slate-600 hover:bg-slate-800">
+                                <LogOut size={14} />
+                                Sign out
+                            </button>
+                        </form>
+                    </div>
+                </aside>
+
+                <main className="flex-1 overflow-y-auto">
+                    <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 px-6 py-4 backdrop-blur lg:px-8">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-sm font-bold text-slate-900">Admin Operations</p>
+                                <p className="text-xs text-slate-500">Secure controls for user lifecycle, usage, and quality monitoring.</p>
+                            </div>
+                            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
+                                <ShieldCheck size={14} />
+                                Admin session verified
+                            </div>
+                        </div>
+                    </header>
+
+                    <div className="p-6 lg:p-8">
+                        {children}
+                    </div>
+                </main>
+            </div>
         </div>
     )
 }

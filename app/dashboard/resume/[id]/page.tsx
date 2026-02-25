@@ -17,20 +17,24 @@ export default async function ResumePage({
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return notFound()
 
-    const { data: generation } = await supabase
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_admin, plan, subscription_status, pro_access_until, billing_cycle, pro_cover_letters_used_cycle, pro_cycle_ends_at')
+        .eq('id', user.id)
+        .single()
+
+    const isAdmin = !!profile?.is_admin
+    let generationQuery = supabase
         .from('resume_generations')
         .select('*')
         .eq('id', id)
-        .eq('user_id', user.id)
-        .single()
 
+    if (!isAdmin) {
+        generationQuery = generationQuery.eq('user_id', user.id)
+    }
+
+    const { data: generation } = await generationQuery.single()
     if (!generation) return notFound()
-
-    const { data: profile } = await supabase
-        .from('profiles')
-        .select('plan, subscription_status, pro_access_until, billing_cycle, pro_cover_letters_used_cycle, pro_cycle_ends_at')
-        .eq('id', user.id)
-        .single()
 
     const isPro = hasProAccess(profile)
     const coverLetterLimit = getCoverLetterPlanLimit(profile)
