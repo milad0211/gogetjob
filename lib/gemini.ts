@@ -8,5 +8,5 @@ if (!apiKey) {
 
 const genAI = new GoogleGenerativeAI(apiKey || 'dummy_key')
 
-// Use 'gemini-1.5-flash' for high speed and good reasoning at low cost
-export const geminiModel = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
+// Use 'gemini-2.5-flash' for high quality reasoning at reasonable cost
+export const geminiModel = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })

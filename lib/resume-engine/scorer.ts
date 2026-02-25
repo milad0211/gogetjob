@@ -2,14 +2,22 @@ import type { CanonicalResume, JobSpec, ScoreBreakdown } from './types'
 import { POWER_VERBS } from './types'
 
 function normalize(value: string): string {
-    return value.toLowerCase().replace(/[^a-z0-9+#.\s]/g, ' ').replace(/\s+/g, ' ').trim()
+    return value.toLowerCase()
+        .replace(/[^a-z0-9+#./\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
 }
 
 function includesTerm(haystack: string, term: string): boolean {
     const normalizedHaystack = normalize(haystack)
     const normalizedTerm = normalize(term)
     if (!normalizedTerm) return false
-    return normalizedHaystack.includes(normalizedTerm)
+    // Direct match
+    if (normalizedHaystack.includes(normalizedTerm)) return true
+    // Try matching with dots/hyphens removed (e.g. "node.js" matches "nodejs")
+    const flatHaystack = normalizedHaystack.replace(/[.\-_]/g, '')
+    const flatTerm = normalizedTerm.replace(/[.\-_]/g, '')
+    return flatHaystack.includes(flatTerm)
 }
 
 function clamp(value: number): number {
@@ -60,9 +68,11 @@ function scoreEvidence(resume: CanonicalResume, jobSpec: JobSpec): number {
     if (keywords.length === 0) return 80
 
     const bulletPool = resume.experience.flatMap((exp) => exp.bullets)
+    const projectPool = resume.projects.flatMap((p) => [p.description, ...p.technologies])
+    const combinedPool = [...bulletPool, ...projectPool]
     let covered = 0
     for (const keyword of keywords) {
-        if (bulletPool.some((line) => includesTerm(line, keyword))) covered += 1
+        if (combinedPool.some((line) => includesTerm(line, keyword))) covered += 1
     }
     return (covered / keywords.length) * 100
 }

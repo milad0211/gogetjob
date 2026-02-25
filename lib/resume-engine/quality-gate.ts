@@ -39,12 +39,12 @@ function compareFactPreservation(rewritten: CanonicalResume, original: Canonical
         issues.push('Experience entry count changed from original')
     }
 
-    if (rewritten.projects.length !== original.projects.length) {
-        issues.push('Project entry count changed from original')
+    if (rewritten.projects.length < original.projects.length) {
+        issues.push('Project entries were removed from original')
     }
 
-    if (rewritten.education.length !== original.education.length) {
-        issues.push('Education entry count changed from original')
+    if (rewritten.education.length < original.education.length) {
+        issues.push('Education entries were removed from original')
     }
 
     const n = rewritten.experience.length
@@ -137,7 +137,7 @@ function checkContentVolume(rewritten: CanonicalResume, original: CanonicalResum
 
     const originalWords = countWords(originalCorpus)
     const rewrittenWords = countWords(rewrittenCorpus)
-    if (originalWords > 0 && rewrittenWords / originalWords < 0.65) {
+    if (originalWords > 0 && rewrittenWords / originalWords < 0.55) {
         issues.push('Output is over-compressed: experience/projects content volume dropped too much')
     }
 
@@ -249,6 +249,7 @@ export function validateOutput(
     const warningIssues = [
         ...checkBulletStructure(rewritten),
         ...detectUnverifiableNumbers(rewritten, original, evidencePool),
+        ...checkBulletQuality(rewritten),
     ]
 
     if (criticalIssues.length > 0) {
@@ -272,4 +273,25 @@ export function validateOutput(
         status: 'passed',
         issues: [],
     }
+}
+
+function checkBulletQuality(rewritten: CanonicalResume): string[] {
+    const issues: string[] = []
+    const allBullets = rewritten.experience.flatMap((exp) => exp.bullets)
+    if (allBullets.length === 0) return issues
+
+    // Check verb diversity
+    const verbCounts = new Map<string, number>()
+    for (const bullet of allBullets) {
+        const firstWord = bullet.trim().split(/\s+/)[0]?.toLowerCase() || ''
+        if (firstWord) verbCounts.set(firstWord, (verbCounts.get(firstWord) || 0) + 1)
+    }
+    const maxAllowed = Math.max(3, Math.ceil(allBullets.length * 0.08))
+    for (const [verb, count] of verbCounts) {
+        if (count > maxAllowed) {
+            issues.push(`Verb "${verb}" repeated ${count} times (max ${maxAllowed})`)
+        }
+    }
+
+    return issues
 }

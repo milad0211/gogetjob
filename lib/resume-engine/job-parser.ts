@@ -2,14 +2,57 @@ import { geminiModel } from '@/lib/gemini'
 import type { JobSpec } from './types'
 
 const COMMON_SKILLS = [
-    'JavaScript', 'TypeScript', 'React', 'Next.js', 'Node.js', 'Python', 'Java',
-    'Go', 'C#', 'SQL', 'PostgreSQL', 'MongoDB', 'Redis', 'AWS', 'Azure', 'GCP',
-    'Docker', 'Kubernetes', 'CI/CD', 'GraphQL', 'REST', 'Microservices', 'Git',
-    'Linux', 'Tailwind', 'HTML', 'CSS', 'Testing', 'Jest', 'Cypress', 'SaaS',
-    'Agile', 'Scrum', 'Data Analysis', 'Machine Learning', 'NLP',
-    'Kotlin', 'Android', 'Jetpack Compose', 'XML', 'Gradle', 'Coroutines',
-    'MVVM', 'Retrofit', 'Room', 'Material', 'Cursor', 'Incident Report',
-    'Bug Trace', 'Screenshots', 'Slack', 'Alpha Testing',
+    // Web Frontend
+    'JavaScript', 'TypeScript', 'React', 'Next.js', 'Vue.js', 'Angular', 'Svelte',
+    'HTML', 'CSS', 'Sass', 'SCSS', 'Tailwind', 'Bootstrap', 'Material UI',
+    'Redux', 'Zustand', 'MobX', 'Webpack', 'Vite', 'Babel', 'jQuery',
+    // Backend & Server
+    'Node.js', 'Express', 'NestJS', 'Fastify', 'Deno', 'Bun',
+    'Python', 'Django', 'Flask', 'FastAPI',
+    'Java', 'Spring', 'Spring Boot', 'Hibernate', 'Maven', 'Gradle',
+    'C#', '.NET', 'ASP.NET',
+    'Go', 'Gin', 'Fiber',
+    'Ruby', 'Rails', 'PHP', 'Laravel',
+    'Rust', 'Elixir', 'Scala', 'Clojure',
+    // Mobile
+    'Swift', 'SwiftUI', 'Objective-C', 'iOS',
+    'Kotlin', 'Android', 'Jetpack Compose', 'React Native', 'Flutter', 'Dart',
+    'Xamarin', 'Ionic', 'Capacitor',
+    // Data & DB
+    'SQL', 'PostgreSQL', 'MySQL', 'SQLite', 'MongoDB', 'Redis',
+    'Elasticsearch', 'DynamoDB', 'Cassandra', 'Firebase', 'Supabase',
+    'Prisma', 'TypeORM', 'Sequelize', 'Mongoose',
+    // Cloud & DevOps
+    'AWS', 'Azure', 'GCP', 'Docker', 'Kubernetes', 'Terraform',
+    'CI/CD', 'Jenkins', 'GitHub Actions', 'GitLab CI', 'CircleCI',
+    'Nginx', 'Apache', 'Linux', 'Bash', 'Shell',
+    'Vercel', 'Netlify', 'Heroku', 'DigitalOcean',
+    // APIs & Architecture
+    'GraphQL', 'REST', 'RESTful', 'gRPC', 'WebSocket',
+    'Microservices', 'Serverless', 'Event-Driven',
+    'OAuth', 'JWT', 'SSO', 'SAML',
+    // Testing & QA
+    'Testing', 'Jest', 'Cypress', 'Playwright', 'Selenium',
+    'Mocha', 'Chai', 'Vitest', 'Puppeteer',
+    'Unit Testing', 'Integration Testing', 'E2E Testing', 'TDD', 'BDD',
+    // Data Science & AI
+    'Machine Learning', 'Deep Learning', 'NLP', 'Computer Vision',
+    'TensorFlow', 'PyTorch', 'scikit-learn', 'Pandas', 'NumPy',
+    'Data Analysis', 'Data Engineering', 'ETL', 'Apache Spark', 'Kafka',
+    'Power BI', 'Tableau', 'Jupyter',
+    // Tools & Practices
+    'Git', 'GitHub', 'GitLab', 'Bitbucket',
+    'Jira', 'Confluence', 'Trello', 'Notion',
+    'Agile', 'Scrum', 'Kanban', 'SAFe',
+    'Figma', 'Sketch', 'Adobe XD',
+    'SaaS', 'PaaS', 'IaaS',
+    'Slack', 'Microsoft Teams', 'Zoom',
+    // Fundamentals
+    'OOP', 'Functional Programming', 'Design Patterns', 'SOLID',
+    'Data Structures', 'Algorithms', 'System Design',
+    'DOM', 'DOM Manipulation', 'ES6', 'ES6+',
+    'Asynchronous Programming', 'Async/Await', 'Promises',
+    'Version Control', 'Code Review', 'Pair Programming',
 ]
 
 function normalizeText(value: string): string {
@@ -33,7 +76,7 @@ function extractTitle(lines: string[]): string {
     if (byLabel) return byLabel.replace(/^title\s*:/i, '').trim()
 
     const roleLike = lines.find((line) =>
-        /\b(engineer|developer|manager|designer|analyst|architect|scientist|consultant|specialist)\b/i.test(line) &&
+        /\b(engineer|developer|manager|designer|analyst|architect|scientist|consultant|specialist|administrator|coordinator|lead|director|intern|associate|technician|programmer)\b/i.test(line) &&
         line.length < 100
     )
     return roleLike || 'Target Role'
@@ -42,6 +85,12 @@ function extractTitle(lines: string[]): string {
 function extractCompany(lines: string[]): string {
     const byLabel = lines.find((line) => /^company\s*:/i.test(line))
     if (byLabel) return byLabel.replace(/^company\s*:/i, '').trim()
+
+    const joinPattern = lines.find((line) => /\b(join|join us at|work at|work for)\s+[A-Z]/i.test(line))
+    if (joinPattern) {
+        const match = joinPattern.match(/\b(?:join|join us at|work at|work for)\s+([A-Z][A-Za-z0-9& .-]{1,60})/i)
+        if (match?.[1]) return match[1].trim()
+    }
 
     const atPattern = lines.find((line) => /\bat\s+[A-Z][A-Za-z0-9& .-]{1,60}/.test(line))
     if (atPattern) {
@@ -55,7 +104,7 @@ function extractLocation(lines: string[]): string {
     const byLabel = lines.find((line) => /^location\s*:/i.test(line))
     if (byLabel) return byLabel.replace(/^location\s*:/i, '').trim()
 
-    const locationLine = lines.find((line) => /\b(remote|hybrid|onsite|on-site)\b/i.test(line))
+    const locationLine = lines.find((line) => /\b(remote|hybrid|onsite|on-site|work from home|work from anywhere)\b/i.test(line))
     return locationLine || ''
 }
 
@@ -90,6 +139,14 @@ function extractPhrases(lines: string[]): string[] {
     return unique(phrases).slice(0, 12)
 }
 
+function detectSeniority(text: string): string {
+    const lower = text.toLowerCase()
+    if (/\b(senior|sr\.?|staff|principal|lead|architect)\b/i.test(lower)) return 'senior'
+    if (/\b(mid[- ]?level|intermediate|2[- ]?4\s*years|3[- ]?5\s*years)\b/i.test(lower)) return 'mid'
+    if (/\b(entry[- ]?level|junior|jr\.?|intern|new grad|graduate|beginner|0[- ]?2\s*years|no experience required)\b/i.test(lower)) return 'entry'
+    return 'mid'
+}
+
 function heuristicParseJobDescription(jobText: string): JobSpec {
     const normalized = normalizeText(jobText)
     const lines = splitLines(normalized)
@@ -98,12 +155,14 @@ function heuristicParseJobDescription(jobText: string): JobSpec {
     const location = extractLocation(lines)
     const responsibilities = extractResponsibilityLines(lines)
     const allSkills = extractSkillsFromText(normalized)
+    const seniorityLevel = detectSeniority(normalized)
 
     const mustHaveSkills = allSkills.slice(0, 10)
     const niceToHaveSkills = allSkills.slice(10, 20)
     const exactPhrases = extractPhrases(lines)
     const domainTerms = unique(
-        ['agile', 'stakeholder', 'scalable', 'performance', 'architecture', 'product']
+        ['agile', 'stakeholder', 'scalable', 'performance', 'architecture', 'product',
+            'e-commerce', 'fintech', 'healthcare', 'saas', 'startup', 'enterprise']
             .filter((term) => normalized.toLowerCase().includes(term))
     )
 
@@ -111,8 +170,10 @@ function heuristicParseJobDescription(jobText: string): JobSpec {
         title,
         companyName,
         location,
+        seniorityLevel,
         mustHaveSkills,
         niceToHaveSkills,
+        softSkills: [],
         exactPhrases,
         responsibilities,
         domainTerms,
@@ -120,19 +181,37 @@ function heuristicParseJobDescription(jobText: string): JobSpec {
 }
 
 async function aiParseJobDescription(jobText: string): Promise<JobSpec> {
-    const prompt = `Parse this job description into JSON.
+    const prompt = `You are an expert Job Description Analyzer for a resume optimization system.
 
-Return only valid JSON with this exact shape:
+TASK: Parse this job description into structured JSON for resume targeting.
+
+RULES:
+1. Extract the EXACT job title as written
+2. Separate technical/hard skills from soft skills
+3. Identify seniority level from context clues (entry/mid/senior)
+4. Extract key phrases that should appear verbatim in a resume
+5. Identify domain-specific terminology
+6. Be thorough — missing a must-have skill means the resume won't match
+
+Return ONLY valid JSON with this shape:
 {
-  "title": "string",
-  "companyName": "string",
-  "location": "string",
-  "mustHaveSkills": ["string"],
-  "niceToHaveSkills": ["string"],
-  "exactPhrases": ["string"],
-  "responsibilities": ["string"],
-  "domainTerms": ["string"]
+  "title": "exact job title",
+  "companyName": "company name or empty string",
+  "location": "location/remote or empty string",
+  "seniorityLevel": "entry|mid|senior",
+  "mustHaveSkills": ["technical skills explicitly required"],
+  "niceToHaveSkills": ["skills mentioned as preferred/bonus"],
+  "softSkills": ["communication, leadership, teamwork, etc."],
+  "exactPhrases": ["key phrases from JD to use verbatim in resume"],
+  "responsibilities": ["main job duties"],
+  "domainTerms": ["industry/domain specific terms"]
 }
+
+IMPORTANT:
+- mustHaveSkills = skills in Requirements or "must have" sections
+- niceToHaveSkills = skills with "preferred", "plus", "bonus", "nice to have"
+- exactPhrases = distinctive phrases from JD that would signal alignment (e.g. "dynamic web applications", "collaborative remote teamwork")
+- For entry-level roles, include foundational skills like "HTML", "CSS", "JavaScript" even if seemingly basic
 
 Job description:
 ${jobText.substring(0, 10000)}`
@@ -155,8 +234,10 @@ ${jobText.substring(0, 10000)}`
         title: parsed.title || fallback.title,
         companyName: parsed.companyName || fallback.companyName,
         location: parsed.location || fallback.location,
+        seniorityLevel: parsed.seniorityLevel || fallback.seniorityLevel,
         mustHaveSkills: unique(parsed.mustHaveSkills || fallback.mustHaveSkills),
         niceToHaveSkills: unique(parsed.niceToHaveSkills || fallback.niceToHaveSkills),
+        softSkills: unique(parsed.softSkills || []),
         exactPhrases: unique(parsed.exactPhrases || fallback.exactPhrases),
         responsibilities: unique(parsed.responsibilities || fallback.responsibilities),
         domainTerms: unique(parsed.domainTerms || fallback.domainTerms),

@@ -1,3 +1,43 @@
+// ── Browser-global polyfills for pdfjs-dist in Node.js ──
+// pdfjs-dist expects DOMMatrix, ImageData, and Path2D to exist globally.
+// In Next.js server runtime these are missing, causing
+// "Object.defineProperty called on non-object" crashes.
+const g = globalThis as Record<string, unknown>
+
+if (!g.DOMMatrix) {
+    g.DOMMatrix = class DOMMatrix {
+        a = 1; b = 0; c = 0; d = 1; e = 0; f = 0
+        m11 = 1; m12 = 0; m13 = 0; m14 = 0
+        m21 = 0; m22 = 1; m23 = 0; m24 = 0
+        m31 = 0; m32 = 0; m33 = 1; m34 = 0
+        m41 = 0; m42 = 0; m43 = 0; m44 = 1
+        is2D = true; isIdentity = true
+        constructor(_init?: string | number[]) { }
+        multiply() { return new (g.DOMMatrix as new () => unknown)() }
+        translate() { return new (g.DOMMatrix as new () => unknown)() }
+        scale() { return new (g.DOMMatrix as new () => unknown)() }
+        inverse() { return new (g.DOMMatrix as new () => unknown)() }
+        transformPoint() { return { x: 0, y: 0, z: 0, w: 1 } }
+    }
+}
+
+if (!g.ImageData) {
+    g.ImageData = class ImageData {
+        data: Uint8ClampedArray; width: number; height: number; colorSpace = 'srgb'
+        constructor(w: number, h: number) {
+            this.width = w; this.height = h
+            this.data = new Uint8ClampedArray(w * h * 4)
+        }
+    }
+}
+
+if (!g.Path2D) {
+    g.Path2D = class Path2D {
+        addPath() { } closePath() { } moveTo() { } lineTo() { } bezierCurveTo() { }
+        quadraticCurveTo() { } arc() { } arcTo() { } ellipse() { } rect() { }
+    }
+}
+
 type PromiseResolvers<T> = {
     promise: Promise<T>
     resolve: (value: T | PromiseLike<T>) => void

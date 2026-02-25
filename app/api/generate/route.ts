@@ -94,7 +94,8 @@ function normalizeText(value: string): string {
     return value.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
-function sanitizeTextForDb(value: string): string {
+function sanitizeTextForDb(value: string | null | undefined): string {
+    if (!value) return ''
     return value
         .replace(/\u0000/g, '')
         .replace(/[\u0001-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
@@ -156,6 +157,7 @@ function buildFallbackGapReport(resume: CanonicalResume, jobSpec: JobSpec): GapR
     return {
         matchedKeywords,
         missingKeywords,
+        transferableSkills: [],
         recommendations,
     }
 }
@@ -460,6 +462,7 @@ export async function POST(req: Request) {
             parser_confidence: parseResult.confidence,
             parser_warnings: parseResult.warnings,
             parser_missing_fields: parseResult.missingFields,
+            job_title: jobSpec.title,
             failure_reason: parseResult.safeModeRequired
                 ? 'parser_low_confidence_safe_mode'
                 : aiFallbackMode

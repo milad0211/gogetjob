@@ -15,6 +15,9 @@ type ParsedResumePayload = {
     skills?: string[]
     education?: Array<{ degree?: string; school?: string; date?: string }>
     certifications?: string[]
+    keyAchievements?: string[]
+    languages?: Array<{ language?: string; proficiency?: string }>
+    additionalSections?: Array<{ title?: string; items?: string[] }>
 }
 
 const SECTION_HEADERS = {
@@ -209,6 +212,20 @@ function getErrorDetails(error: unknown): { status?: number; message: string } {
     return { status: maybe.status, message: maybe.message || '' }
 }
 
+/**
+ * Fix common AI-generated JSON issues:
+ * - Trailing commas before } or ]
+ * - Control characters inside strings
+ */
+function repairJson(raw: string): string {
+    let s = raw
+    // Remove trailing commas before } or ] (most common AI JSON error)
+    s = s.replace(/,\s*([\]}])/g, '$1')
+    // Remove any control characters that aren't whitespace
+    s = s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
+    return s
+}
+
 async function aiParseResume(text: string, maxRetries = 2): Promise<ParsedResumePayload> {
     const prompt = `You are a Resume Parser. Extract facts from this raw resume text into STRICT JSON.
 Never hallucinate or invent information. If a field is missing, leave it as an empty string "" or empty array [].
@@ -231,14 +248,21 @@ OUTPUT JSON FORMAT:
     "education": [
         { "degree": "", "school": "", "date": "" }
     ],
-    "certifications": ["cert1"]
+    "certifications": ["cert1"],
+    "keyAchievements": ["achievement or award description"],
+    "languages": [{ "language": "English", "proficiency": "Native" }],
+    "additionalSections": [{ "title": "Section Name", "items": ["item1", "item2"] }]
 }
 
 RULES:
 1. ONLY return the JSON object, nothing else. No markdown blocks like \`\`\`json.
 2. Deduplicate duplicate skills. Sort skills with most important/technical first.
 3. Keep bullets exactly as written, just formatted cleanly. Don't rewrite them.
-4. Ensure "experience" exists even if empty.`
+4. Ensure "experience" exists even if empty.
+5. Extract awards, recognitions, and notable achievements into "keyAchievements".
+6. Extract ALL certifications, courses, and professional development into "certifications".
+7. Extract ALL languages with proficiency levels into "languages".
+8. CRITICAL: ANY section in the resume NOT covered by the fields above (e.g. Volunteer Work, Publications, Interests, Hobbies, Professional Memberships, References, etc.) MUST be captured in "additionalSections". NEVER silently discard any content from the resume.`
 
     let attempt = 0
     let lastError: unknown = null
@@ -257,7 +281,7 @@ RULES:
             if (!responseText) throw new Error('Empty response from AI parser')
 
             const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim()
-            return JSON.parse(cleanJson)
+            return JSON.parse(repairJson(cleanJson))
         } catch (error: unknown) {
             lastError = error
             const details = getErrorDetails(error)
@@ -292,11 +316,38 @@ RULES:
 function extractEvidenceSkills(canonical: CanonicalResume, rawText: string): string[] {
     const evidenceSkills = new Set<string>()
     const rawCorpus = rawText.toLowerCase()
+    // Also build a normalized corpus stripping hyphens/dots for fuzzy matching
+    const rawCorpusNormalized = rawCorpus.replace(/[-_.]/g, ' ').replace(/\s+/g, ' ')
+
+    // Build extended text pool from experience bullets and project descriptions
+    const bulletPool = [
+        ...canonical.experience.flatMap(exp => exp.bullets),
+        ...canonical.projects.flatMap(p => [p.description, ...p.technologies]),
+        ...canonical.certifications,
+    ].join(' ').toLowerCase()
+    const bulletPoolNormalized = bulletPool.replace(/[-_.]/g, ' ').replace(/\s+/g, ' ')
 
     canonical.skills.forEach(skill => {
         const normalizedSkill = skill.trim()
         if (!normalizedSkill) return
-        if (rawCorpus.includes(normalizedSkill.toLowerCase())) {
+        const skillLower = normalizedSkill.toLowerCase()
+        const skillNormalized = skillLower.replace(/[-_.]/g, ' ').replace(/\s+/g, ' ')
+
+        // Direct case-insensitive match in raw text
+        if (rawCorpus.includes(skillLower) || rawCorpusNormalized.includes(skillNormalized)) {
+            evidenceSkills.add(normalizedSkill)
+            return
+        }
+
+        // Check in bullet/project pool too
+        if (bulletPool.includes(skillLower) || bulletPoolNormalized.includes(skillNormalized)) {
+            evidenceSkills.add(normalizedSkill)
+            return
+        }
+
+        // For multi-word skills, check if all individual words appear
+        const words = skillNormalized.split(/\s+/).filter(w => w.length > 2)
+        if (words.length >= 2 && words.every(w => rawCorpusNormalized.includes(w))) {
             evidenceSkills.add(normalizedSkill)
         }
     })
@@ -466,6 +517,15 @@ export async function parseResume(text: string): Promise<ParseResult> {
             date: edu.date || '',
         })) : [],
         certifications: Array.isArray(aiParsed.certifications) ? aiParsed.certifications : [],
+        keyAchievements: Array.isArray(aiParsed.keyAchievements) ? aiParsed.keyAchievements : [],
+        languages: Array.isArray(aiParsed.languages) ? aiParsed.languages.map((l) => ({
+            language: l.language || '',
+            proficiency: l.proficiency || '',
+        })) : [],
+        additionalSections: Array.isArray(aiParsed.additionalSections) ? aiParsed.additionalSections.map((s) => ({
+            title: s.title || '',
+            items: Array.isArray(s.items) ? s.items : [],
+        })).filter(s => s.title && s.items.length > 0) : [],
     }
 
     resume = verifyEntitiesAgainstRawText(resume, rawText, warnings)
@@ -503,10 +563,13 @@ export async function parseResume(text: string): Promise<ParseResult> {
     const evidenceSkills = extractEvidenceSkills(resume, rawText)
     const evidenceMap = buildEvidenceMap(resume, rawText, evidenceSkills)
     resume.portfolioLinks = evidenceMap.links
+    // Only trigger safe mode for truly broken parses, not minor verification warnings
+    const verificationFailCount = warnings.filter((w) => w.startsWith('Verification:')).length
+    const totalEntityCount = resume.experience.length + resume.education.length
     const safeModeRequired =
         resume.experience.length === 0 ||
         resume.education.length === 0 ||
-        warnings.some((warning) => warning.startsWith('Verification:'))
+        (totalEntityCount > 0 && verificationFailCount / totalEntityCount > 0.5)
 
     return {
         resume,

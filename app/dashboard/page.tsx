@@ -10,6 +10,7 @@ import {
     getCoverLetterPlanLimit,
     getCoverLetterCurrentUsage,
 } from '@/lib/subscription'
+import { formatJobHost, resolveJobTargetLabel } from '@/lib/job-target'
 
 type ScoreSummary = {
     before: number | null
@@ -44,15 +45,6 @@ function extractScoreSummary(analysis: unknown): ScoreSummary {
         before,
         after,
         improvement: before !== null && after !== null ? after - before : null,
-    }
-}
-
-function formatJobHost(rawUrl?: string | null): string {
-    if (!rawUrl) return 'Job Description'
-    try {
-        return new URL(rawUrl).hostname.replace(/^www\./, '')
-    } catch {
-        return 'Job Description'
     }
 }
 
@@ -293,38 +285,56 @@ export default async function DashboardPage() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50">
-                                {generations?.map((gen) => (
-                                    <tr key={gen.id} className="hover:bg-slate-50/50 transition">
-                                        <td className="px-8 py-5">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs">
-                                                    PDF
+                                {generations?.map((gen) => {
+                                    const jobTarget = resolveJobTargetLabel({
+                                        jobText: gen.job_text,
+                                        jobUrl: gen.job_url,
+                                        analysis: gen.analysis_json,
+                                    })
+                                    const sourceHost = formatJobHost(gen.job_url)
+                                    const showSourceHost =
+                                        !!sourceHost && sourceHost.toLowerCase() !== jobTarget.toLowerCase()
+
+                                    return (
+                                        <tr key={gen.id} className="hover:bg-slate-50/50 transition">
+                                            <td className="px-8 py-5">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs">
+                                                        PDF
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <p className="font-medium text-slate-900 truncate max-w-[240px]">
+                                                            {jobTarget}
+                                                        </p>
+                                                        {showSourceHost && (
+                                                            <p className="text-xs text-slate-400 truncate max-w-[240px]">
+                                                                {sourceHost}
+                                                            </p>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                                <p className="font-medium text-slate-900 truncate max-w-[200px]">
-                                                    {formatJobHost(gen.job_url)}
-                                                </p>
-                                            </div>
-                                        </td>
-                                        <td className="px-8 py-5 text-slate-500 text-sm">
-                                            {new Date(gen.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                        </td>
-                                        <td className="px-8 py-5">
-                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold capitalize border
+                                            </td>
+                                            <td className="px-8 py-5 text-slate-500 text-sm">
+                                                {new Date(gen.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                            </td>
+                                            <td className="px-8 py-5">
+                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold capitalize border
                          ${gen.status === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                                                    gen.status === 'failed' ? 'bg-red-50 text-red-700 border-red-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
-                                                {gen.status}
-                                            </span>
-                                        </td>
-                                        <td className="px-8 py-5">
-                                            <MatchScoreCell analysis={gen.analysis_json} />
-                                        </td>
-                                        <td className="px-8 py-5">
-                                            <Link href={`/dashboard/resume/${gen.id}`} className="text-sm font-bold text-blue-600 hover:text-blue-800 transition">
-                                                View
-                                            </Link>
-                                        </td>
-                                    </tr>
-                                ))}
+                                                        gen.status === 'failed' ? 'bg-red-50 text-red-700 border-red-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
+                                                    {gen.status}
+                                                </span>
+                                            </td>
+                                            <td className="px-8 py-5">
+                                                <MatchScoreCell analysis={gen.analysis_json} />
+                                            </td>
+                                            <td className="px-8 py-5">
+                                                <Link href={`/dashboard/resume/${gen.id}`} className="text-sm font-bold text-blue-600 hover:text-blue-800 transition">
+                                                    View
+                                                </Link>
+                                            </td>
+                                        </tr>
+                                    )
+                                })}
                             </tbody>
                         </table>
                     </div>

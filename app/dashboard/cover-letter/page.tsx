@@ -2,15 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { FileText, ArrowRight, Sparkles, PenLine, Lock, Crown, CheckCircle2 } from 'lucide-react'
 import { hasProAccess } from '@/lib/subscription'
-
-function formatHost(rawUrl: string | null): string {
-    if (!rawUrl) return 'Job Description'
-    try {
-        return new URL(rawUrl).hostname.replace(/^www\./, '')
-    } catch {
-        return 'Job Description'
-    }
-}
+import { formatJobHost, resolveJobTargetLabel } from '@/lib/job-target'
 
 export default async function CoverLetterPage() {
     const supabase = createClient()
@@ -26,11 +18,23 @@ export default async function CoverLetterPage() {
 
     const { data: generations } = await (await supabase)
         .from('resume_generations')
-        .select('id, created_at, job_url, cover_letter_text, status')
+        .select('id, created_at, job_url, job_text, analysis_json, cover_letter_text, status')
         .eq('user_id', user?.id)
         .order('created_at', { ascending: false })
 
-    const allGenerations = generations || []
+    const allGenerations = (generations || []).map((gen) => {
+        const jobTarget = resolveJobTargetLabel({
+            jobText: gen.job_text,
+            jobUrl: gen.job_url,
+            analysis: gen.analysis_json,
+        })
+        const sourceHost = formatJobHost(gen.job_url)
+        return {
+            ...gen,
+            jobTarget,
+            sourceHost,
+        }
+    })
     const generatedLetters = allGenerations.filter((gen) => !!gen.cover_letter_text)
     const readyToGenerate = allGenerations.filter((gen) => !gen.cover_letter_text).slice(0, 8)
 
@@ -113,8 +117,11 @@ export default async function CoverLetterPage() {
                                     </span>
                                 </div>
                                 <h3 className="font-bold text-slate-900 mb-2 line-clamp-1">
-                                    {formatHost(gen.job_url)}
+                                    {gen.jobTarget}
                                 </h3>
+                                {gen.sourceHost && gen.sourceHost.toLowerCase() !== gen.jobTarget.toLowerCase() && (
+                                    <p className="text-xs text-slate-400 mb-2 line-clamp-1">{gen.sourceHost}</p>
+                                )}
                                 <p className="text-sm text-slate-500 mb-6 line-clamp-3">
                                     {gen.cover_letter_text}
                                 </p>
@@ -155,7 +162,10 @@ export default async function CoverLetterPage() {
                             >
                                 <div className="flex items-center justify-between gap-3">
                                     <div>
-                                        <p className="text-sm font-bold text-slate-900 line-clamp-1">{formatHost(gen.job_url)}</p>
+                                        <p className="text-sm font-bold text-slate-900 line-clamp-1">{gen.jobTarget}</p>
+                                        {gen.sourceHost && gen.sourceHost.toLowerCase() !== gen.jobTarget.toLowerCase() && (
+                                            <p className="text-[11px] text-slate-400 mt-1 line-clamp-1">{gen.sourceHost}</p>
+                                        )}
                                         <p className="text-xs text-slate-500 mt-1">
                                             {new Date(gen.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                         </p>

@@ -1,6 +1,6 @@
-export const ENGINE_VERSION = '2.0.0'
-export const PROMPT_VERSION = '2.0.0'
-export const MODEL_NAME = 'gemini-2.5-flash-lite'
+export const ENGINE_VERSION = '3.0.0'
+export const PROMPT_VERSION = '3.0.0'
+export const MODEL_NAME = 'gemini-2.5-flash'
 
 export const CONFIDENCE_THRESHOLDS = {
     REJECT: 45,
@@ -16,10 +16,26 @@ export const BULLET_RULES = {
 } as const
 
 export const POWER_VERBS = [
+    // Core Engineering
     'Implemented', 'Developed', 'Optimized', 'Designed', 'Built', 'Architected',
     'Automated', 'Integrated', 'Refactored', 'Delivered', 'Improved', 'Led',
     'Collaborated', 'Scaled', 'Reduced', 'Accelerated', 'Analyzed', 'Created',
     'Deployed', 'Enhanced', 'Established', 'Executed', 'Migrated', 'Streamlined',
+    // Leadership & Strategy
+    'Spearheaded', 'Orchestrated', 'Pioneered', 'Championed', 'Mentored',
+    'Directed', 'Coordinated', 'Initiated', 'Transformed', 'Overhauled',
+    // Problem Solving
+    'Resolved', 'Diagnosed', 'Troubleshot', 'Debugged', 'Identified',
+    'Investigated', 'Remediated', 'Mitigated', 'Eliminated', 'Addressed',
+    // Communication & Impact
+    'Presented', 'Documented', 'Communicated', 'Advocated', 'Facilitated',
+    'Translated', 'Published', 'Reported', 'Trained', 'Onboarded',
+    // Growth & Innovation
+    'Launched', 'Prototyped', 'Introduced', 'Modernized', 'Revamped',
+    'Engineered', 'Configured', 'Provisioned', 'Consolidated', 'Standardized',
+    // Measurement & Quality
+    'Achieved', 'Increased', 'Decreased', 'Maintained', 'Ensured',
+    'Validated', 'Tested', 'Verified', 'Benchmarked', 'Monitored',
 ]
 
 export type MatchedKeywordLocation =
@@ -59,6 +75,10 @@ export interface CanonicalResume {
         date: string
     }>
     certifications: string[]
+    keyAchievements: string[]
+    languages: Array<{ language: string; proficiency: string }>
+    /** Catch-all for resume sections not explicitly typed (Volunteer, Publications, Awards, Hobbies, etc.) */
+    additionalSections: Array<{ title: string; items: string[] }>
     photo?: {
         dataUrl: string
         source: 'uploaded' | 'extracted' | 'unknown'
@@ -104,8 +124,10 @@ export interface JobSpec {
     title: string
     companyName: string
     location: string
+    seniorityLevel: string
     mustHaveSkills: string[]
     niceToHaveSkills: string[]
+    softSkills: string[]
     exactPhrases: string[]
     responsibilities: string[]
     domainTerms: string[]
@@ -117,6 +139,11 @@ export interface GapReport {
         foundIn: MatchedKeywordLocation[]
     }>
     missingKeywords: string[]
+    transferableSkills: Array<{
+        has: string
+        mapsTo: string
+        strength: 'strong' | 'moderate' | 'weak'
+    }>
     recommendations: string[]
 }
 
@@ -142,6 +169,7 @@ export interface EngineMetadata {
     parser_confidence: number
     parser_warnings: string[]
     parser_missing_fields: string[]
+    job_title?: string
     failure_reason?: string
     safe_mode_used?: boolean
 }
