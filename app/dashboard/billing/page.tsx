@@ -39,8 +39,21 @@ export default async function BillingPage() {
 
     const isCanceled = profile?.subscription_status === 'canceled'
 
-    const MONTHLY_CHECKOUT = `${process.env.NEXT_PUBLIC_POLAR_CHECKOUT_URL_MONTHLY}?metadata[user_id]=${user?.id}`
-    const YEARLY_CHECKOUT = `${process.env.NEXT_PUBLIC_POLAR_CHECKOUT_URL_YEARLY}?metadata[user_id]=${user?.id}`
+    const buildCheckoutUrl = (baseUrl?: string) => {
+        if (!baseUrl || !user?.id) return null
+
+        try {
+            const url = new URL(baseUrl)
+            url.searchParams.set('metadata[user_id]', user.id)
+            return url.toString()
+        } catch {
+            return null
+        }
+    }
+
+    const monthlyCheckoutUrl = buildCheckoutUrl(process.env.NEXT_PUBLIC_POLAR_CHECKOUT_URL_MONTHLY)
+    const yearlyCheckoutUrl = buildCheckoutUrl(process.env.NEXT_PUBLIC_POLAR_CHECKOUT_URL_YEARLY)
+    const checkoutConfigured = Boolean(monthlyCheckoutUrl && yearlyCheckoutUrl)
 
     return (
         <div className="p-8 max-w-4xl mx-auto">
@@ -147,6 +160,13 @@ export default async function BillingPage() {
             {(!isPro || isCanceled) && (
                 <div>
                     <h2 className="text-xl font-bold text-slate-900 mb-6">Choose Your Pro Plan</h2>
+                    {!checkoutConfigured && (
+                        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                            <p className="text-sm font-medium text-amber-800">
+                                Checkout is temporarily unavailable. Please configure the Polar checkout URLs in environment variables.
+                            </p>
+                        </div>
+                    )}
                     <div className="grid md:grid-cols-2 gap-6">
                         {/* Pro Monthly */}
                         <div className="bg-white p-8 rounded-2xl shadow-sm border-2 border-slate-200 hover:border-blue-300 transition flex flex-col relative group">
@@ -172,12 +192,22 @@ export default async function BillingPage() {
                                     </li>
                                 ))}
                             </ul>
-                            <a
-                                href={MONTHLY_CHECKOUT}
-                                className="block w-full bg-blue-600 hover:bg-blue-700 text-white text-center font-bold py-3.5 rounded-xl transition shadow-lg shadow-blue-600/20 hover:-translate-y-0.5"
-                            >
-                                Subscribe Monthly
-                            </a>
+                            {monthlyCheckoutUrl ? (
+                                <a
+                                    href={monthlyCheckoutUrl}
+                                    className="block w-full bg-blue-600 hover:bg-blue-700 text-white text-center font-bold py-3.5 rounded-xl transition shadow-lg shadow-blue-600/20 hover:-translate-y-0.5"
+                                >
+                                    Subscribe Monthly
+                                </a>
+                            ) : (
+                                <button
+                                    type="button"
+                                    disabled
+                                    className="block w-full cursor-not-allowed rounded-xl bg-slate-300 py-3.5 text-center font-bold text-slate-600"
+                                >
+                                    Subscribe Monthly
+                                </button>
+                            )}
                         </div>
 
                         {/* Pro Yearly */}
@@ -209,12 +239,22 @@ export default async function BillingPage() {
                                     </li>
                                 ))}
                             </ul>
-                            <a
-                                href={YEARLY_CHECKOUT}
-                                className="block w-full bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white text-center font-bold py-3.5 rounded-xl transition shadow-lg shadow-indigo-500/30 hover:-translate-y-0.5"
-                            >
-                                Subscribe Yearly — Save 33%
-                            </a>
+                            {yearlyCheckoutUrl ? (
+                                <a
+                                    href={yearlyCheckoutUrl}
+                                    className="block w-full bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white text-center font-bold py-3.5 rounded-xl transition shadow-lg shadow-indigo-500/30 hover:-translate-y-0.5"
+                                >
+                                    Subscribe Yearly — Save 33%
+                                </a>
+                            ) : (
+                                <button
+                                    type="button"
+                                    disabled
+                                    className="block w-full cursor-not-allowed rounded-xl bg-slate-600 py-3.5 text-center font-bold text-slate-300"
+                                >
+                                    Subscribe Yearly — Save 33%
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
