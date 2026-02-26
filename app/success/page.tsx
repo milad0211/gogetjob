@@ -6,12 +6,8 @@ import { redirect } from 'next/navigation'
 export default async function SuccessPage({
     searchParams,
 }: {
-    searchParams: { checkout_id?: string }
+    searchParams: Promise<{ checkout_id?: string }>
 }) {
-    // Optional: Verify checkout_id with Polar API if needed, 
-    // but for now we just show success and let the webhook handle the DB update.
-    // We can check if the user is upgraded in DB (polling) or just show a success message.
-
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -19,8 +15,14 @@ export default async function SuccessPage({
         return redirect('/login')
     }
 
+    const params = await searchParams
+    const checkoutId = params.checkout_id
+
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+            {/* Auto-redirect to dashboard after 5 seconds */}
+            <meta httpEquiv="refresh" content="5;url=/dashboard" />
+
             <div className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full text-center border border-slate-100">
                 <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
                     <CheckCircle size={40} />
@@ -30,9 +32,11 @@ export default async function SuccessPage({
                     Thank you for upgrading to Pro. Your account has been activated and all limits have been removed.
                 </p>
 
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-8 text-sm text-slate-500 break-all">
-                    Checkout ID: <span className="font-mono text-slate-700">{searchParams.checkout_id}</span>
-                </div>
+                {checkoutId && (
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-8 text-sm text-slate-500 break-all">
+                        Checkout ID: <span className="font-mono text-slate-700">{checkoutId}</span>
+                    </div>
+                )}
 
                 <Link
                     href="/dashboard"
@@ -42,7 +46,7 @@ export default async function SuccessPage({
                 </Link>
             </div>
             <p className="mt-8 text-slate-400 text-sm">
-                If your features aren't active yet, please wait a moment and refresh.
+                You will be redirected to dashboard in 5 seconds...
             </p>
         </div>
     )

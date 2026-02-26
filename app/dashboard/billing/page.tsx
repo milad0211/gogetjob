@@ -14,7 +14,6 @@ import {
     getCoverLetterProMonthlyLimit,
     getCoverLetterProYearlyLimit,
 } from '@/lib/subscription'
-import { attachCheckoutMetadata, resolvePolarCheckoutConfigs } from '@/lib/polar/config'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,40 +40,7 @@ export default async function BillingPage() {
         : null
 
     const isCanceled = profile?.subscription_status === 'canceled'
-
-    const checkoutConfig = resolvePolarCheckoutConfigs()
-    const monthlyCheckoutUrl = attachCheckoutMetadata(checkoutConfig.monthly.normalizedUrl, user?.id)
-    const yearlyCheckoutUrl = attachCheckoutMetadata(checkoutConfig.yearly.normalizedUrl, user?.id)
-    const duplicateCheckoutTargets = checkoutConfig.duplicateTargets
-    const missingUserForCheckout = !user?.id
-    const canUseMonthlyCheckout = Boolean(monthlyCheckoutUrl && !duplicateCheckoutTargets && !missingUserForCheckout)
-    const canUseYearlyCheckout = Boolean(yearlyCheckoutUrl && !duplicateCheckoutTargets && !missingUserForCheckout)
-    const checkoutConfigured = canUseMonthlyCheckout && canUseYearlyCheckout
-    const invalidVars = [
-        checkoutConfig.monthly.error
-            ? checkoutConfig.monthly.sourceLabel
-            : null,
-        checkoutConfig.yearly.error
-            ? checkoutConfig.yearly.sourceLabel
-            : null,
-    ].filter((value): value is string => Boolean(value))
-
-    if (!checkoutConfigured) {
-        console.warn('[Billing] Checkout config issue', {
-            hasUserId: Boolean(user?.id),
-            monthly: {
-                sourceKey: checkoutConfig.monthly.sourceKey,
-                error: checkoutConfig.monthly.error,
-                checkoutLinkId: checkoutConfig.monthly.checkoutLinkId,
-            },
-            yearly: {
-                sourceKey: checkoutConfig.yearly.sourceKey,
-                error: checkoutConfig.yearly.error,
-                checkoutLinkId: checkoutConfig.yearly.checkoutLinkId,
-            },
-            duplicateCheckoutTargets,
-        })
-    }
+    const canCheckout = Boolean(user?.id)
 
     return (
         <div className="p-8 max-w-4xl mx-auto">
@@ -181,38 +147,6 @@ export default async function BillingPage() {
             {(!isPro || isCanceled) && (
                 <div>
                     <h2 className="text-xl font-bold text-slate-900 mb-6">Choose Your Pro Plan</h2>
-                    {!checkoutConfigured && (
-                        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
-                            <p className="text-sm font-medium text-amber-800">
-                                Checkout is temporarily unavailable. Please configure the Polar checkout URLs in environment variables.
-                            </p>
-                            {invalidVars.length > 0 && (
-                                <p className="mt-2 text-xs text-amber-700">
-                                    Invalid or missing: {invalidVars.join(', ')}
-                                </p>
-                            )}
-                            {missingUserForCheckout && (
-                                <p className="mt-2 text-xs text-amber-700">
-                                    Could not resolve your session on server. Please sign out/in and refresh this page.
-                                </p>
-                            )}
-                            {duplicateCheckoutTargets && (
-                                <p className="mt-2 text-xs text-amber-700">
-                                    Monthly and yearly checkout URLs are identical. Use two different Polar checkout links.
-                                </p>
-                            )}
-                            {(checkoutConfig.monthly.sourceKey || checkoutConfig.yearly.sourceKey) && (
-                                <p className="mt-2 text-xs text-amber-700">
-                                    Resolved keys: monthly={checkoutConfig.monthly.sourceKey ?? 'none'}, yearly={checkoutConfig.yearly.sourceKey ?? 'none'}
-                                </p>
-                            )}
-                            {checkoutConfig.anySandbox && (
-                                <p className="mt-2 text-xs text-amber-700">
-                                    Sandbox checkout links detected. For real payments, use live Polar checkout links and complete payment onboarding.
-                                </p>
-                            )}
-                        </div>
-                    )}
                     <div className="grid md:grid-cols-2 gap-6">
                         {/* Pro Monthly */}
                         <div className="bg-white p-8 rounded-2xl shadow-sm border-2 border-slate-200 hover:border-blue-300 transition flex flex-col relative group">
@@ -238,9 +172,9 @@ export default async function BillingPage() {
                                     </li>
                                 ))}
                             </ul>
-                            {canUseMonthlyCheckout ? (
+                            {canCheckout ? (
                                 <a
-                                    href={monthlyCheckoutUrl!}
+                                    href="/api/checkout?plan=monthly"
                                     className="block w-full bg-blue-600 hover:bg-blue-700 text-white text-center font-bold py-3.5 rounded-xl transition shadow-lg shadow-blue-600/20 hover:-translate-y-0.5"
                                 >
                                     Subscribe Monthly
@@ -285,9 +219,9 @@ export default async function BillingPage() {
                                     </li>
                                 ))}
                             </ul>
-                            {canUseYearlyCheckout ? (
+                            {canCheckout ? (
                                 <a
-                                    href={yearlyCheckoutUrl!}
+                                    href="/api/checkout?plan=yearly"
                                     className="block w-full bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white text-center font-bold py-3.5 rounded-xl transition shadow-lg shadow-indigo-500/30 hover:-translate-y-0.5"
                                 >
                                     Subscribe Yearly — Save 33%
