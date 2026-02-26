@@ -47,8 +47,9 @@ export async function GET(req: NextRequest) {
     const polarApiBase = getPolarApiBaseUrl()
 
     // Build the Checkout Session request
+    // Polar API expects "products" as an array of product IDs
     const checkoutBody: Record<string, unknown> = {
-        product_id: productId,
+        products: [productId],
         success_url: `${returnBaseUrl}/success?checkout_id={CHECKOUT_ID}`,
         metadata: {
             user_id: user.id,
@@ -56,11 +57,7 @@ export async function GET(req: NextRequest) {
         customer_email: profile?.email || user.email,
     }
 
-    // If user already has a polar_customer_id, attach it to avoid creating duplicate customers
-    if (profile?.polar_customer_id) {
-        checkoutBody.customer_id = profile.polar_customer_id
-        delete checkoutBody.customer_email
-    }
+    console.log(`[Checkout] Creating session: plan=${plan}, product=${productId}, user=${user.id}, api=${polarApiBase}`)
 
     const resp = await fetch(`${polarApiBase}/v1/checkouts/`, {
         method: 'POST',
@@ -74,7 +71,10 @@ export async function GET(req: NextRequest) {
     if (!resp.ok) {
         const text = await resp.text()
         console.error(`[Checkout] Polar API error (${resp.status}):`, text)
-        return NextResponse.json({ error: 'Failed to create checkout session' }, { status: 500 })
+        return NextResponse.json(
+            { error: 'Failed to create checkout session', detail: text },
+            { status: resp.status }
+        )
     }
 
     const checkoutData = await resp.json()
@@ -87,3 +87,4 @@ export async function GET(req: NextRequest) {
     console.error('[Checkout] No URL in Polar checkout response:', checkoutData)
     return NextResponse.json({ error: 'Checkout URL not returned' }, { status: 500 })
 }
+
