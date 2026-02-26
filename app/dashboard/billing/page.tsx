@@ -14,6 +14,7 @@ import {
     getCoverLetterProMonthlyLimit,
     getCoverLetterProYearlyLimit,
 } from '@/lib/subscription'
+import { attachCheckoutMetadata, resolvePolarCheckoutConfigs } from '@/lib/polar/config'
 
 export const dynamic = 'force-dynamic'
 
@@ -40,7 +41,12 @@ export default async function BillingPage() {
         : null
 
     const isCanceled = profile?.subscription_status === 'canceled'
-    const canCheckout = Boolean(user?.id)
+
+    const checkoutConfig = resolvePolarCheckoutConfigs()
+    const monthlyCheckoutUrl = attachCheckoutMetadata(checkoutConfig.monthly.normalizedUrl, user?.id)
+    const yearlyCheckoutUrl = attachCheckoutMetadata(checkoutConfig.yearly.normalizedUrl, user?.id)
+    const canUseMonthlyCheckout = Boolean(monthlyCheckoutUrl && user?.id)
+    const canUseYearlyCheckout = Boolean(yearlyCheckoutUrl && user?.id)
 
     return (
         <div className="p-8 max-w-4xl mx-auto">
@@ -172,9 +178,9 @@ export default async function BillingPage() {
                                     </li>
                                 ))}
                             </ul>
-                            {canCheckout ? (
+                            {canUseMonthlyCheckout ? (
                                 <a
-                                    href="/api/checkout?plan=monthly"
+                                    href={monthlyCheckoutUrl!}
                                     className="block w-full bg-blue-600 hover:bg-blue-700 text-white text-center font-bold py-3.5 rounded-xl transition shadow-lg shadow-blue-600/20 hover:-translate-y-0.5"
                                 >
                                     Subscribe Monthly
@@ -219,9 +225,9 @@ export default async function BillingPage() {
                                     </li>
                                 ))}
                             </ul>
-                            {canCheckout ? (
+                            {canUseYearlyCheckout ? (
                                 <a
-                                    href="/api/checkout?plan=yearly"
+                                    href={yearlyCheckoutUrl!}
                                     className="block w-full bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white text-center font-bold py-3.5 rounded-xl transition shadow-lg shadow-indigo-500/30 hover:-translate-y-0.5"
                                 >
                                     Subscribe Yearly — Save 33%
