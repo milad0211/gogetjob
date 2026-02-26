@@ -39,21 +39,46 @@ export default async function BillingPage() {
 
     const isCanceled = profile?.subscription_status === 'canceled'
 
-    const buildCheckoutUrl = (baseUrl?: string) => {
-        if (!baseUrl || !user?.id) return null
+    type CheckoutBuildResult = {
+        url: string | null
+        error: 'missing' | 'invalid' | null
+    }
+
+    const buildCheckoutUrl = (rawValue: string | undefined): CheckoutBuildResult => {
+        if (!rawValue || !user?.id) return { url: null, error: 'missing' }
+
+        // Be tolerant to common Vercel input mistakes:
+        // 1) Pasted full "KEY=value" into value field
+        // 2) Wrapped value in quotes
+        // 3) Leading/trailing spaces
+        let normalized = rawValue.trim()
+        if (!normalized) return { url: null, error: 'missing' }
+        if (normalized.includes('=') && !normalized.startsWith('http://') && !normalized.startsWith('https://')) {
+            normalized = normalized.split('=').slice(1).join('=').trim()
+        }
+        normalized = normalized.replace(/^['"]/, '').replace(/['"]$/, '').trim()
+        if (!normalized) return { url: null, error: 'missing' }
 
         try {
-            const url = new URL(baseUrl)
+            const url = new URL(normalized)
+            if (!url.protocol.startsWith('http')) return { url: null, error: 'invalid' }
             url.searchParams.set('metadata[user_id]', user.id)
-            return url.toString()
+            return { url: url.toString(), error: null }
         } catch {
-            return null
+            return { url: null, error: 'invalid' }
         }
     }
 
-    const monthlyCheckoutUrl = buildCheckoutUrl(process.env.NEXT_PUBLIC_POLAR_CHECKOUT_URL_MONTHLY)
-    const yearlyCheckoutUrl = buildCheckoutUrl(process.env.NEXT_PUBLIC_POLAR_CHECKOUT_URL_YEARLY)
+    const legacyCheckoutUrl = process.env.NEXT_PUBLIC_POLAR_CHECKOUT_URL
+    const monthlyCheckout = buildCheckoutUrl(process.env.NEXT_PUBLIC_POLAR_CHECKOUT_URL_MONTHLY || legacyCheckoutUrl)
+    const yearlyCheckout = buildCheckoutUrl(process.env.NEXT_PUBLIC_POLAR_CHECKOUT_URL_YEARLY || legacyCheckoutUrl)
+    const monthlyCheckoutUrl = monthlyCheckout.url
+    const yearlyCheckoutUrl = yearlyCheckout.url
     const checkoutConfigured = Boolean(monthlyCheckoutUrl && yearlyCheckoutUrl)
+    const invalidVars = [
+        monthlyCheckout.error ? 'NEXT_PUBLIC_POLAR_CHECKOUT_URL_MONTHLY' : null,
+        yearlyCheckout.error ? 'NEXT_PUBLIC_POLAR_CHECKOUT_URL_YEARLY' : null,
+    ].filter(Boolean)
 
     return (
         <div className="p-8 max-w-4xl mx-auto">
@@ -165,6 +190,11 @@ export default async function BillingPage() {
                             <p className="text-sm font-medium text-amber-800">
                                 Checkout is temporarily unavailable. Please configure the Polar checkout URLs in environment variables.
                             </p>
+                            {invalidVars.length > 0 && (
+                                <p className="mt-2 text-xs text-amber-700">
+                                    Invalid or missing: {invalidVars.join(', ')}
+                                </p>
+                            )}
                         </div>
                     )}
                     <div className="grid md:grid-cols-2 gap-6">
