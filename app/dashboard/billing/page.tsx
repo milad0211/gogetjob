@@ -15,6 +15,31 @@ import {
     getCoverLetterProYearlyLimit,
 } from '@/lib/subscription'
 
+export const dynamic = 'force-dynamic'
+
+const MONTHLY_CHECKOUT_ENV_KEYS = [
+    'POLAR_CHECKOUT_URL_MONTHLY',
+    'NEXT_PUBLIC_POLAR_CHECKOUT_URL_MONTHLY',
+    'NEXT_PUBLIC_POLAR_CHECKOUT_URL',
+]
+
+const YEARLY_CHECKOUT_ENV_KEYS = [
+    'POLAR_CHECKOUT_URL_YEARLY',
+    'NEXT_PUBLIC_POLAR_CHECKOUT_URL_YEARLY',
+    'NEXT_PUBLIC_POLAR_CHECKOUT_URL',
+]
+
+function pickFirstEnvValue(keys: string[]): { value: string | undefined; key: string | null } {
+    for (const key of keys) {
+        const raw = process.env[key]
+        if (typeof raw === 'string' && raw.trim()) {
+            return { value: raw, key }
+        }
+    }
+
+    return { value: undefined, key: null }
+}
+
 export default async function BillingPage() {
     const supabase = createClient()
     const { data: { user } } = await (await supabase).auth.getUser()
@@ -41,36 +66,39 @@ export default async function BillingPage() {
 
     type CheckoutBuildResult = {
         url: string | null
-        error: 'missing' | 'invalid' | null
+        error: 'missing_env' | 'invalid_env' | 'missing_user' | null
     }
 
     const buildCheckoutUrl = (rawValue: string | undefined): CheckoutBuildResult => {
-        if (!rawValue || !user?.id) return { url: null, error: 'missing' }
+        if (!rawValue) return { url: null, error: 'missing_env' }
 
         // Be tolerant to common Vercel input mistakes:
         // 1) Pasted full "KEY=value" into value field
         // 2) Wrapped value in quotes
         // 3) Leading/trailing spaces
         let normalized = rawValue.trim()
-        if (!normalized) return { url: null, error: 'missing' }
+        if (!normalized) return { url: null, error: 'missing_env' }
         if (normalized.includes('=') && !normalized.startsWith('http://') && !normalized.startsWith('https://')) {
             normalized = normalized.split('=').slice(1).join('=').trim()
         }
         normalized = normalized.replace(/^['"]/, '').replace(/['"]$/, '').trim()
-        if (!normalized) return { url: null, error: 'missing' }
+        if (!normalized) return { url: null, error: 'missing_env' }
 
         try {
             const url = new URL(normalized)
-            if (!url.protocol.startsWith('http')) return { url: null, error: 'invalid' }
+            if (!url.protocol.startsWith('http')) return { url: null, error: 'invalid_env' }
+            if (!user?.id) return { url: null, error: 'missing_user' }
             url.searchParams.set('metadata[user_id]', user.id)
             return { url: url.toString(), error: null }
         } catch {
-            return { url: null, error: 'invalid' }
+            return { url: null, error: 'invalid_env' }
         }
     }
 
-    const monthlyCheckout = buildCheckoutUrl(process.env.NEXT_PUBLIC_POLAR_CHECKOUT_URL_MONTHLY)
-    const yearlyCheckout = buildCheckoutUrl(process.env.NEXT_PUBLIC_POLAR_CHECKOUT_URL_YEARLY)
+    const monthlyCheckoutEnv = pickFirstEnvValue(MONTHLY_CHECKOUT_ENV_KEYS)
+    const yearlyCheckoutEnv = pickFirstEnvValue(YEARLY_CHECKOUT_ENV_KEYS)
+    const monthlyCheckout = buildCheckoutUrl(monthlyCheckoutEnv.value)
+    const yearlyCheckout = buildCheckoutUrl(yearlyCheckoutEnv.value)
     const monthlyCheckoutUrl = monthlyCheckout.url
     const yearlyCheckoutUrl = yearlyCheckout.url
     const duplicateCheckoutTargets = Boolean(
@@ -79,10 +107,24 @@ export default async function BillingPage() {
         monthlyCheckoutUrl === yearlyCheckoutUrl
     )
     const checkoutConfigured = Boolean(monthlyCheckoutUrl && yearlyCheckoutUrl && !duplicateCheckoutTargets)
+    const missingUserForCheckout = monthlyCheckout.error === 'missing_user' || yearlyCheckout.error === 'missing_user'
     const invalidVars = [
-        monthlyCheckout.error ? 'NEXT_PUBLIC_POLAR_CHECKOUT_URL_MONTHLY' : null,
-        yearlyCheckout.error ? 'NEXT_PUBLIC_POLAR_CHECKOUT_URL_YEARLY' : null,
-    ].filter(Boolean)
+        monthlyCheckout.error && monthlyCheckout.error !== 'missing_user'
+            ? 'POLAR_CHECKOUT_URL_MONTHLY / NEXT_PUBLIC_POLAR_CHECKOUT_URL_MONTHLY'
+            : null,
+        yearlyCheckout.error && yearlyCheckout.error !== 'missing_user'
+            ? 'POLAR_CHECKOUT_URL_YEARLY / NEXT_PUBLIC_POLAR_CHECKOUT_URL_YEARLY'
+            : null,
+    ].filter((value): value is string => Boolean(value))
+
+    if (!checkoutConfigured) {
+        console.warn('[Billing] Checkout config issue', {
+            hasUserId: Boolean(user?.id),
+            monthly: { sourceKey: monthlyCheckoutEnv.key, error: monthlyCheckout.error },
+            yearly: { sourceKey: yearlyCheckoutEnv.key, error: yearlyCheckout.error },
+            duplicateCheckoutTargets,
+        })
+    }
 
     return (
         <div className="p-8 max-w-4xl mx-auto">
@@ -197,6 +239,11 @@ export default async function BillingPage() {
                             {invalidVars.length > 0 && (
                                 <p className="mt-2 text-xs text-amber-700">
                                     Invalid or missing: {invalidVars.join(', ')}
+                                </p>
+                            )}
+                            {missingUserForCheckout && (
+                                <p className="mt-2 text-xs text-amber-700">
+                                    Could not resolve your session on server. Please sign out/in and refresh this page.
                                 </p>
                             )}
                             {duplicateCheckoutTargets && (
