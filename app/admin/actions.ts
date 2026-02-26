@@ -34,6 +34,11 @@ function revalidateAdminViews() {
     revalidatePath('/admin/activity')
 }
 
+function revalidateUserViews() {
+    revalidatePath('/dashboard')
+    revalidatePath('/dashboard/cover-letter')
+}
+
 async function getAdminContext(): Promise<AdminContext | null> {
     const supabase = await createClient()
     const { data: { user: currentUser } } = await supabase.auth.getUser()
@@ -221,12 +226,29 @@ export async function clearUserGenerations(userId: string): Promise<AdminActionR
     const context = await getAdminContext()
     if (!context) return { error: 'Unauthorized' }
 
+    const { count: beforeCount, error: beforeCountError } = await context.supabase
+        .from('resume_generations')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+
+    if (beforeCountError) return { error: beforeCountError.message }
+
     const { error } = await context.supabase
         .from('resume_generations')
         .delete()
         .eq('user_id', userId)
 
     if (error) return { error: error.message }
+
+    const { count: remainingCount, error: remainingError } = await context.supabase
+        .from('resume_generations')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+
+    if (remainingError) return { error: remainingError.message }
+    if ((remainingCount ?? 0) > 0) {
+        return { error: 'Generation rows were not deleted. Apply admin DELETE policy on resume_generations and try again.' }
+    }
 
     // Keep the profile aggregate coherent after cleanup.
     const { error: profileError } = await context.supabase
@@ -242,7 +264,14 @@ export async function clearUserGenerations(userId: string): Promise<AdminActionR
     if (profileError) return { error: profileError.message }
 
     revalidateAdminViews()
-    return { success: true, message: 'User generation history cleared.' }
+    revalidateUserViews()
+    const deletedCount = beforeCount ?? 0
+    return {
+        success: true,
+        message: deletedCount > 0
+            ? `User generation history cleared (${deletedCount} rows).`
+            : 'No generation rows found. Usage counters were reset.',
+    }
 }
 
 export async function deleteUser(userId: string) {
