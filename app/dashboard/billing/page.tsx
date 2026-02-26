@@ -69,12 +69,16 @@ export default async function BillingPage() {
         }
     }
 
-    const legacyCheckoutUrl = process.env.NEXT_PUBLIC_POLAR_CHECKOUT_URL
-    const monthlyCheckout = buildCheckoutUrl(process.env.NEXT_PUBLIC_POLAR_CHECKOUT_URL_MONTHLY || legacyCheckoutUrl)
-    const yearlyCheckout = buildCheckoutUrl(process.env.NEXT_PUBLIC_POLAR_CHECKOUT_URL_YEARLY || legacyCheckoutUrl)
+    const monthlyCheckout = buildCheckoutUrl(process.env.NEXT_PUBLIC_POLAR_CHECKOUT_URL_MONTHLY)
+    const yearlyCheckout = buildCheckoutUrl(process.env.NEXT_PUBLIC_POLAR_CHECKOUT_URL_YEARLY)
     const monthlyCheckoutUrl = monthlyCheckout.url
     const yearlyCheckoutUrl = yearlyCheckout.url
-    const checkoutConfigured = Boolean(monthlyCheckoutUrl && yearlyCheckoutUrl)
+    const duplicateCheckoutTargets = Boolean(
+        monthlyCheckoutUrl &&
+        yearlyCheckoutUrl &&
+        monthlyCheckoutUrl === yearlyCheckoutUrl
+    )
+    const checkoutConfigured = Boolean(monthlyCheckoutUrl && yearlyCheckoutUrl && !duplicateCheckoutTargets)
     const invalidVars = [
         monthlyCheckout.error ? 'NEXT_PUBLIC_POLAR_CHECKOUT_URL_MONTHLY' : null,
         yearlyCheckout.error ? 'NEXT_PUBLIC_POLAR_CHECKOUT_URL_YEARLY' : null,
@@ -193,6 +197,11 @@ export default async function BillingPage() {
                             {invalidVars.length > 0 && (
                                 <p className="mt-2 text-xs text-amber-700">
                                     Invalid or missing: {invalidVars.join(', ')}
+                                </p>
+                            )}
+                            {duplicateCheckoutTargets && (
+                                <p className="mt-2 text-xs text-amber-700">
+                                    Monthly and yearly checkout URLs are identical. Use two different Polar checkout links.
                                 </p>
                             )}
                         </div>
