@@ -14,31 +14,9 @@ import {
     getCoverLetterProMonthlyLimit,
     getCoverLetterProYearlyLimit,
 } from '@/lib/subscription'
+import { attachCheckoutMetadata, resolvePolarCheckoutConfigs } from '@/lib/polar/config'
 
 export const dynamic = 'force-dynamic'
-
-const MONTHLY_CHECKOUT_ENV_KEYS = [
-    'POLAR_CHECKOUT_URL_MONTHLY',
-    'NEXT_PUBLIC_POLAR_CHECKOUT_URL_MONTHLY',
-    'NEXT_PUBLIC_POLAR_CHECKOUT_URL',
-]
-
-const YEARLY_CHECKOUT_ENV_KEYS = [
-    'POLAR_CHECKOUT_URL_YEARLY',
-    'NEXT_PUBLIC_POLAR_CHECKOUT_URL_YEARLY',
-    'NEXT_PUBLIC_POLAR_CHECKOUT_URL',
-]
-
-function pickFirstEnvValue(keys: string[]): { value: string | undefined; key: string | null } {
-    for (const key of keys) {
-        const raw = process.env[key]
-        if (typeof raw === 'string' && raw.trim()) {
-            return { value: raw, key }
-        }
-    }
-
-    return { value: undefined, key: null }
-}
 
 export default async function BillingPage() {
     const supabase = createClient()
@@ -64,64 +42,36 @@ export default async function BillingPage() {
 
     const isCanceled = profile?.subscription_status === 'canceled'
 
-    type CheckoutBuildResult = {
-        url: string | null
-        error: 'missing_env' | 'invalid_env' | 'missing_user' | null
-    }
-
-    const buildCheckoutUrl = (rawValue: string | undefined): CheckoutBuildResult => {
-        if (!rawValue) return { url: null, error: 'missing_env' }
-
-        // Be tolerant to common Vercel input mistakes:
-        // 1) Pasted full "KEY=value" into value field
-        // 2) Wrapped value in quotes
-        // 3) Leading/trailing spaces
-        let normalized = rawValue.trim()
-        if (!normalized) return { url: null, error: 'missing_env' }
-        if (normalized.includes('=') && !normalized.startsWith('http://') && !normalized.startsWith('https://')) {
-            normalized = normalized.split('=').slice(1).join('=').trim()
-        }
-        normalized = normalized.replace(/^['"]/, '').replace(/['"]$/, '').trim()
-        if (!normalized) return { url: null, error: 'missing_env' }
-
-        try {
-            const url = new URL(normalized)
-            if (!url.protocol.startsWith('http')) return { url: null, error: 'invalid_env' }
-            if (!user?.id) return { url: null, error: 'missing_user' }
-            url.searchParams.set('metadata[user_id]', user.id)
-            return { url: url.toString(), error: null }
-        } catch {
-            return { url: null, error: 'invalid_env' }
-        }
-    }
-
-    const monthlyCheckoutEnv = pickFirstEnvValue(MONTHLY_CHECKOUT_ENV_KEYS)
-    const yearlyCheckoutEnv = pickFirstEnvValue(YEARLY_CHECKOUT_ENV_KEYS)
-    const monthlyCheckout = buildCheckoutUrl(monthlyCheckoutEnv.value)
-    const yearlyCheckout = buildCheckoutUrl(yearlyCheckoutEnv.value)
-    const monthlyCheckoutUrl = monthlyCheckout.url
-    const yearlyCheckoutUrl = yearlyCheckout.url
-    const duplicateCheckoutTargets = Boolean(
-        monthlyCheckoutUrl &&
-        yearlyCheckoutUrl &&
-        monthlyCheckoutUrl === yearlyCheckoutUrl
-    )
-    const checkoutConfigured = Boolean(monthlyCheckoutUrl && yearlyCheckoutUrl && !duplicateCheckoutTargets)
-    const missingUserForCheckout = monthlyCheckout.error === 'missing_user' || yearlyCheckout.error === 'missing_user'
+    const checkoutConfig = resolvePolarCheckoutConfigs()
+    const monthlyCheckoutUrl = attachCheckoutMetadata(checkoutConfig.monthly.normalizedUrl, user?.id)
+    const yearlyCheckoutUrl = attachCheckoutMetadata(checkoutConfig.yearly.normalizedUrl, user?.id)
+    const duplicateCheckoutTargets = checkoutConfig.duplicateTargets
+    const missingUserForCheckout = !user?.id
+    const canUseMonthlyCheckout = Boolean(monthlyCheckoutUrl && !duplicateCheckoutTargets && !missingUserForCheckout)
+    const canUseYearlyCheckout = Boolean(yearlyCheckoutUrl && !duplicateCheckoutTargets && !missingUserForCheckout)
+    const checkoutConfigured = canUseMonthlyCheckout && canUseYearlyCheckout
     const invalidVars = [
-        monthlyCheckout.error && monthlyCheckout.error !== 'missing_user'
-            ? 'POLAR_CHECKOUT_URL_MONTHLY / NEXT_PUBLIC_POLAR_CHECKOUT_URL_MONTHLY'
+        checkoutConfig.monthly.error
+            ? checkoutConfig.monthly.sourceLabel
             : null,
-        yearlyCheckout.error && yearlyCheckout.error !== 'missing_user'
-            ? 'POLAR_CHECKOUT_URL_YEARLY / NEXT_PUBLIC_POLAR_CHECKOUT_URL_YEARLY'
+        checkoutConfig.yearly.error
+            ? checkoutConfig.yearly.sourceLabel
             : null,
     ].filter((value): value is string => Boolean(value))
 
     if (!checkoutConfigured) {
         console.warn('[Billing] Checkout config issue', {
             hasUserId: Boolean(user?.id),
-            monthly: { sourceKey: monthlyCheckoutEnv.key, error: monthlyCheckout.error },
-            yearly: { sourceKey: yearlyCheckoutEnv.key, error: yearlyCheckout.error },
+            monthly: {
+                sourceKey: checkoutConfig.monthly.sourceKey,
+                error: checkoutConfig.monthly.error,
+                checkoutLinkId: checkoutConfig.monthly.checkoutLinkId,
+            },
+            yearly: {
+                sourceKey: checkoutConfig.yearly.sourceKey,
+                error: checkoutConfig.yearly.error,
+                checkoutLinkId: checkoutConfig.yearly.checkoutLinkId,
+            },
             duplicateCheckoutTargets,
         })
     }
@@ -251,6 +201,16 @@ export default async function BillingPage() {
                                     Monthly and yearly checkout URLs are identical. Use two different Polar checkout links.
                                 </p>
                             )}
+                            {(checkoutConfig.monthly.sourceKey || checkoutConfig.yearly.sourceKey) && (
+                                <p className="mt-2 text-xs text-amber-700">
+                                    Resolved keys: monthly={checkoutConfig.monthly.sourceKey ?? 'none'}, yearly={checkoutConfig.yearly.sourceKey ?? 'none'}
+                                </p>
+                            )}
+                            {checkoutConfig.anySandbox && (
+                                <p className="mt-2 text-xs text-amber-700">
+                                    Sandbox checkout links detected. For real payments, use live Polar checkout links and complete payment onboarding.
+                                </p>
+                            )}
                         </div>
                     )}
                     <div className="grid md:grid-cols-2 gap-6">
@@ -278,9 +238,9 @@ export default async function BillingPage() {
                                     </li>
                                 ))}
                             </ul>
-                            {monthlyCheckoutUrl ? (
+                            {canUseMonthlyCheckout ? (
                                 <a
-                                    href={monthlyCheckoutUrl}
+                                    href={monthlyCheckoutUrl!}
                                     className="block w-full bg-blue-600 hover:bg-blue-700 text-white text-center font-bold py-3.5 rounded-xl transition shadow-lg shadow-blue-600/20 hover:-translate-y-0.5"
                                 >
                                     Subscribe Monthly
@@ -325,9 +285,9 @@ export default async function BillingPage() {
                                     </li>
                                 ))}
                             </ul>
-                            {yearlyCheckoutUrl ? (
+                            {canUseYearlyCheckout ? (
                                 <a
-                                    href={yearlyCheckoutUrl}
+                                    href={yearlyCheckoutUrl!}
                                     className="block w-full bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white text-center font-bold py-3.5 rounded-xl transition shadow-lg shadow-indigo-500/30 hover:-translate-y-0.5"
                                 >
                                     Subscribe Yearly — Save 33%

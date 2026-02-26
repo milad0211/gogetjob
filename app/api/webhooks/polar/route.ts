@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { Webhook } from 'standardwebhooks'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 const WEBHOOK_SECRET = process.env.POLAR_WEBHOOK_SECRET
 const MONTHLY_PRODUCT_ID = process.env.POLAR_MONTHLY_PRODUCT_ID
@@ -63,7 +63,13 @@ export async function POST(req: NextRequest) {
 
     console.log(`[Webhook] Received: ${type} (event: ${eventId})`)
 
-    const supabase = await createClient()
+    let supabase
+    try {
+        supabase = createAdminClient()
+    } catch (error) {
+        console.error('Failed to create Supabase admin client for Polar webhook:', error)
+        return NextResponse.json({ error: 'Server config error' }, { status: 500 })
+    }
 
     // 2. Idempotency check
     const { data: existing } = await supabase
