@@ -92,17 +92,16 @@ async function resolveUserId(
 }
 
 /**
- * Normalize the Polar webhook secret for use with standardwebhooks.
- * Polar provides secrets like "polar_whs_XXXXX", but standardwebhooks
- * expects either "whsec_XXXXX" (base64) or raw base64.
- * The part after the prefix IS base64, so we just need to fix the prefix.
+ * Prepare the Polar webhook secret for use with standardwebhooks.
+ *
+ * Per Polar docs, the secret (e.g. "polar_whs_XXXXX") is the raw signing key.
+ * The standardwebhooks library expects it to be base64-encoded,
+ * so it can internally decode it back to get the raw key bytes.
+ *
+ * Python equivalent: Webhook(base64.b64encode(WEBHOOK_SECRET.encode()))
  */
-function normalizeWebhookSecret(secret: string): string {
-    if (secret.startsWith('polar_whs_')) {
-        // Strip the Polar prefix, prepend the standardwebhooks prefix
-        return 'whsec_' + secret.substring('polar_whs_'.length)
-    }
-    return secret
+function encodeWebhookSecret(secret: string): string {
+    return Buffer.from(secret.trim()).toString('base64')
 }
 
 export async function POST(req: NextRequest) {
@@ -116,8 +115,8 @@ export async function POST(req: NextRequest) {
         // 1. Validate Signature
         const payload = await req.text()
         const headers = Object.fromEntries(req.headers)
-        const normalizedSecret = normalizeWebhookSecret(WEBHOOK_SECRET)
-        const wh = new Webhook(normalizedSecret)
+        const encodedSecret = encodeWebhookSecret(WEBHOOK_SECRET)
+        const wh = new Webhook(encodedSecret)
 
         try {
             wh.verify(payload, headers as Record<string, string>)
