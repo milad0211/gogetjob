@@ -91,204 +91,225 @@ async function resolveUserId(
     return null
 }
 
+/**
+ * Normalize the Polar webhook secret for use with standardwebhooks.
+ * Polar provides secrets like "polar_whs_XXXXX", but standardwebhooks
+ * expects either "whsec_XXXXX" (base64) or raw base64.
+ * The part after the prefix IS base64, so we just need to fix the prefix.
+ */
+function normalizeWebhookSecret(secret: string): string {
+    if (secret.startsWith('polar_whs_')) {
+        // Strip the Polar prefix, prepend the standardwebhooks prefix
+        return 'whsec_' + secret.substring('polar_whs_'.length)
+    }
+    return secret
+}
+
 export async function POST(req: NextRequest) {
-    if (!WEBHOOK_SECRET) {
-        console.error('[Webhook] POLAR_WEBHOOK_SECRET is missing')
-        return NextResponse.json({ error: 'Server config error' }, { status: 500 })
-    }
-
-    // 1. Validate Signature
-    const payload = await req.text()
-    const headers = Object.fromEntries(req.headers)
-    const wh = new Webhook(WEBHOOK_SECRET)
-
+    // Top-level try/catch to prevent ANY unhandled crash
     try {
-        wh.verify(payload, headers as Record<string, string>)
-    } catch (err) {
-        console.error('[Webhook] Signature verification failed:', err)
-        return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
-    }
-
-    const event = JSON.parse(payload)
-    const { type, data } = event
-    const eventId: string = event.id || `${type}_${Date.now()}`
-
-    console.log(`[Webhook] Received: ${type} (event: ${eventId})`)
-
-    let supabase
-    try {
-        supabase = createAdminClient()
-    } catch (error) {
-        console.error('[Webhook] Failed to create Supabase admin client:', error)
-        return NextResponse.json({ error: 'Server config error' }, { status: 500 })
-    }
-
-    // 2. Idempotency check
-    const { data: existing, error: idempotencyError } = await supabase
-        .from('polar_webhook_events')
-        .select('id')
-        .eq('id', eventId)
-        .maybeSingle()
-
-    if (idempotencyError) {
-        console.error('[Webhook] Idempotency check failed:', idempotencyError.message)
-        // Continue processing — don't block on idempotency table errors
-    }
-
-    if (existing) {
-        console.log(`[Webhook] Duplicate event ${eventId}, ignoring.`)
-        return NextResponse.json({ received: true, duplicate: true })
-    }
-
-    // Record the event
-    const { error: insertError } = await supabase.from('polar_webhook_events').insert({
-        id: eventId,
-        type,
-        subscription_id: data?.id || null,
-    })
-
-    if (insertError) {
-        console.error('[Webhook] Failed to record event:', insertError.message)
-        // Continue processing — the event insert failing shouldn't block the update
-    }
-
-    // 3. Handle subscription.created / subscription.updated
-    if (type === 'subscription.created' || type === 'subscription.updated' || type === 'subscription.active') {
-        const userId = await resolveUserId(data, supabase)
-        const status: string = data.status // 'active', 'canceled', etc.
-
-        if (!userId) {
-            console.error('[Webhook] CRITICAL: No user found for subscription event', {
-                type,
-                customerId: data.customer_id,
-                customerEmail: (data.customer as Record<string, unknown>)?.email,
-                metadata: data.metadata,
-            })
-            return NextResponse.json({ received: true, error: 'user_not_found' })
+        if (!WEBHOOK_SECRET) {
+            console.error('[Webhook] POLAR_WEBHOOK_SECRET is missing')
+            return NextResponse.json({ error: 'Server config error' }, { status: 500 })
         }
 
-        const productId = extractProductId(data)
-        const billingCycle = mapProductToBillingCycle(productId)
-        const isPro = status === 'active' || status === 'trialing'
-        const isPastDue = status === 'past_due'
+        // 1. Validate Signature
+        const payload = await req.text()
+        const headers = Object.fromEntries(req.headers)
+        const normalizedSecret = normalizeWebhookSecret(WEBHOOK_SECRET)
+        const wh = new Webhook(normalizedSecret)
 
-        // Extract period dates from Polar
-        const currentPeriodStart = data.current_period_start || null
-        const currentPeriodEnd = data.current_period_end || null
-
-        if (isPro) {
-            const updates: Record<string, unknown> = {
-                plan: 'pro',
-                subscription_status: status,
-                polar_customer_id: data.customer_id || null,
-                polar_subscription_id: data.id || null,
-                polar_product_id: productId,
-            }
-
-            if (billingCycle) {
-                updates.billing_cycle = billingCycle
-            }
-
-            if (currentPeriodStart) {
-                updates.pro_cycle_started_at = currentPeriodStart
-            }
-            if (currentPeriodEnd) {
-                updates.pro_cycle_ends_at = currentPeriodEnd
-                updates.pro_access_until = currentPeriodEnd
-            }
-
-            // If this is a new period (or plan change), reset the cycle counter
-            const { data: existingProfile } = await supabase
-                .from('profiles')
-                .select('pro_cycle_started_at, polar_product_id')
-                .eq('id', userId)
-                .single()
-
-            const periodChanged = existingProfile?.pro_cycle_started_at !== currentPeriodStart && currentPeriodStart
-            const planChanged = existingProfile?.polar_product_id !== productId && productId
-            if (periodChanged || planChanged) {
-                updates.pro_generations_used_cycle = 0
-                updates.pro_cover_letters_used_cycle = 0
-            }
-
-            const { error: updateError } = await supabase.from('profiles').update(updates).eq('id', userId)
-
-            if (updateError) {
-                console.error(`[Webhook] FAILED to update profile for user ${userId}:`, updateError.message)
-                return NextResponse.json({ received: true, error: 'update_failed' }, { status: 500 })
-            }
-
-            console.log(`[Webhook] SUCCESS: User ${userId}: plan=pro, cycle=${billingCycle}, period=${currentPeriodStart}→${currentPeriodEnd}`)
-
-        } else if (isPastDue) {
-            const { error: updateError } = await supabase.from('profiles').update({
-                subscription_status: 'past_due',
-            }).eq('id', userId)
-
-            if (updateError) {
-                console.error(`[Webhook] FAILED to update past_due for user ${userId}:`, updateError.message)
-            }
-
-            console.log(`[Webhook] User ${userId}: past_due — grace period, access kept until pro_access_until`)
-
-        } else {
-            const { error: updateError } = await supabase.from('profiles').update({
-                subscription_status: status,
-            }).eq('id', userId)
-
-            if (updateError) {
-                console.error(`[Webhook] FAILED to update status for user ${userId}:`, updateError.message)
-            }
-
-            console.log(`[Webhook] User ${userId}: subscription status → ${status} (access kept until pro_access_until)`)
+        try {
+            wh.verify(payload, headers as Record<string, string>)
+        } catch (err) {
+            console.error('[Webhook] Signature verification failed:', err)
+            return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
         }
-    }
 
-    // 4. Handle subscription.canceled
-    if (type === 'subscription.canceled') {
-        const userId = await resolveUserId(data, supabase)
-        if (userId) {
+        const event = JSON.parse(payload)
+        const { type, data } = event
+        const eventId: string = event.id || `${type}_${Date.now()}`
+
+        console.log(`[Webhook] Received: ${type} (event: ${eventId})`)
+
+        let supabase
+        try {
+            supabase = createAdminClient()
+        } catch (error) {
+            console.error('[Webhook] Failed to create Supabase admin client:', error)
+            return NextResponse.json({ error: 'Server config error' }, { status: 500 })
+        }
+
+        // 2. Idempotency check (non-blocking)
+        const { data: existing, error: idempotencyError } = await supabase
+            .from('polar_webhook_events')
+            .select('id')
+            .eq('id', eventId)
+            .maybeSingle()
+
+        if (idempotencyError) {
+            console.warn('[Webhook] Idempotency table query failed (table may not exist):', idempotencyError.message)
+        }
+
+        if (existing) {
+            console.log(`[Webhook] Duplicate event ${eventId}, ignoring.`)
+            return NextResponse.json({ received: true, duplicate: true })
+        }
+
+        // Record the event (non-blocking)
+        const { error: insertError } = await supabase.from('polar_webhook_events').insert({
+            id: eventId,
+            type,
+            subscription_id: data?.id || null,
+        })
+
+        if (insertError) {
+            console.warn('[Webhook] Failed to record event (table may not exist):', insertError.message)
+        }
+
+        // 3. Handle subscription.created / subscription.updated / subscription.active
+        if (type === 'subscription.created' || type === 'subscription.updated' || type === 'subscription.active') {
+            const userId = await resolveUserId(data, supabase)
+            const status: string = data.status // 'active', 'canceled', etc.
+
+            if (!userId) {
+                console.error('[Webhook] CRITICAL: No user found for subscription event', {
+                    type,
+                    customerId: data.customer_id,
+                    customerEmail: (data.customer as Record<string, unknown>)?.email,
+                    metadata: data.metadata,
+                })
+                return NextResponse.json({ received: true, error: 'user_not_found' })
+            }
+
+            const productId = extractProductId(data)
+            const billingCycle = mapProductToBillingCycle(productId)
+            const isPro = status === 'active' || status === 'trialing'
+            const isPastDue = status === 'past_due'
+
+            const currentPeriodStart = data.current_period_start || null
             const currentPeriodEnd = data.current_period_end || null
-            const { error: updateError } = await supabase.from('profiles').update({
-                subscription_status: 'canceled',
-                ...(currentPeriodEnd ? { pro_access_until: currentPeriodEnd } : {}),
-            }).eq('id', userId)
 
-            if (updateError) {
-                console.error(`[Webhook] FAILED to update canceled for user ${userId}:`, updateError.message)
+            if (isPro) {
+                const updates: Record<string, unknown> = {
+                    plan: 'pro',
+                    subscription_status: status,
+                    polar_customer_id: data.customer_id || null,
+                    polar_subscription_id: data.id || null,
+                    polar_product_id: productId,
+                }
+
+                if (billingCycle) {
+                    updates.billing_cycle = billingCycle
+                }
+
+                if (currentPeriodStart) {
+                    updates.pro_cycle_started_at = currentPeriodStart
+                }
+                if (currentPeriodEnd) {
+                    updates.pro_cycle_ends_at = currentPeriodEnd
+                    updates.pro_access_until = currentPeriodEnd
+                }
+
+                // Reset cycle counters if period or plan changed
+                const { data: existingProfile } = await supabase
+                    .from('profiles')
+                    .select('pro_cycle_started_at, polar_product_id')
+                    .eq('id', userId)
+                    .single()
+
+                const periodChanged = existingProfile?.pro_cycle_started_at !== currentPeriodStart && currentPeriodStart
+                const planChanged = existingProfile?.polar_product_id !== productId && productId
+                if (periodChanged || planChanged) {
+                    updates.pro_generations_used_cycle = 0
+                    updates.pro_cover_letters_used_cycle = 0
+                }
+
+                const { error: updateError } = await supabase.from('profiles').update(updates).eq('id', userId)
+
+                if (updateError) {
+                    console.error(`[Webhook] FAILED to update profile for user ${userId}:`, updateError.message)
+                    return NextResponse.json({ received: true, error: 'update_failed' }, { status: 500 })
+                }
+
+                console.log(`[Webhook] SUCCESS: User ${userId}: plan=pro, cycle=${billingCycle}, period=${currentPeriodStart}→${currentPeriodEnd}`)
+
+            } else if (isPastDue) {
+                const { error: updateError } = await supabase.from('profiles').update({
+                    subscription_status: 'past_due',
+                }).eq('id', userId)
+
+                if (updateError) {
+                    console.error(`[Webhook] FAILED to update past_due for user ${userId}:`, updateError.message)
+                }
+
+                console.log(`[Webhook] User ${userId}: past_due — grace period, access kept until pro_access_until`)
+
+            } else {
+                const { error: updateError } = await supabase.from('profiles').update({
+                    subscription_status: status,
+                }).eq('id', userId)
+
+                if (updateError) {
+                    console.error(`[Webhook] FAILED to update status for user ${userId}:`, updateError.message)
+                }
+
+                console.log(`[Webhook] User ${userId}: subscription status → ${status} (access kept until pro_access_until)`)
+            }
+        }
+
+        // 4. Handle subscription.canceled
+        if (type === 'subscription.canceled') {
+            const userId = await resolveUserId(data, supabase)
+            if (userId) {
+                const currentPeriodEnd = data.current_period_end || null
+                const { error: updateError } = await supabase.from('profiles').update({
+                    subscription_status: 'canceled',
+                    ...(currentPeriodEnd ? { pro_access_until: currentPeriodEnd } : {}),
+                }).eq('id', userId)
+
+                if (updateError) {
+                    console.error(`[Webhook] FAILED to update canceled for user ${userId}:`, updateError.message)
+                }
+
+                console.log(`[Webhook] User ${userId}: canceled. Access until ${currentPeriodEnd}`)
+            }
+        }
+
+        // 5. Handle refund — revoke Pro immediately
+        if (type === 'refund.created' || type === 'order.refunded' || type === 'subscription.revoked') {
+            const refundMetadata = data.metadata as Record<string, unknown> | undefined
+            const subMetadata = (data.subscription as Record<string, unknown> | undefined)?.metadata as Record<string, unknown> | undefined
+            let userId = (refundMetadata?.user_id || subMetadata?.user_id) as string | undefined
+
+            if (!userId) {
+                userId = await resolveUserId(data, supabase) || undefined
             }
 
-            console.log(`[Webhook] User ${userId}: canceled. Access until ${currentPeriodEnd}`)
-        }
-    }
+            if (userId) {
+                const { error: updateError } = await supabase.from('profiles').update({
+                    plan: 'free',
+                    subscription_status: 'inactive',
+                    pro_access_until: new Date().toISOString(),
+                    billing_cycle: null,
+                    pro_cover_letters_used_cycle: 0,
+                }).eq('id', userId)
 
-    // 5. Handle refund — revoke Pro immediately
-    if (type === 'refund.created' || type === 'order.refunded' || type === 'subscription.revoked') {
-        const refundMetadata = data.metadata as Record<string, unknown> | undefined
-        const subMetadata = (data.subscription as Record<string, unknown> | undefined)?.metadata as Record<string, unknown> | undefined
-        let userId = (refundMetadata?.user_id || subMetadata?.user_id) as string | undefined
+                if (updateError) {
+                    console.error(`[Webhook] FAILED to revoke pro for user ${userId}:`, updateError.message)
+                }
 
-        // Fallback: resolve via customer data
-        if (!userId) {
-            userId = await resolveUserId(data, supabase) || undefined
-        }
-
-        if (userId) {
-            const { error: updateError } = await supabase.from('profiles').update({
-                plan: 'free',
-                subscription_status: 'inactive',
-                pro_access_until: new Date().toISOString(),
-                billing_cycle: null,
-                pro_cover_letters_used_cycle: 0,
-            }).eq('id', userId)
-
-            if (updateError) {
-                console.error(`[Webhook] FAILED to revoke pro for user ${userId}:`, updateError.message)
+                console.log(`[Webhook] User ${userId}: REFUNDED/REVOKED — Pro access revoked immediately`)
             }
-
-            console.log(`[Webhook] User ${userId}: REFUNDED/REVOKED — Pro access revoked immediately`)
         }
-    }
 
-    return NextResponse.json({ received: true })
+        // For all other event types (checkout.created, customer.*, etc.), just acknowledge
+        console.log(`[Webhook] Event ${type} processed successfully`)
+        return NextResponse.json({ received: true })
+
+    } catch (error) {
+        // Global catch — prevents ANY unhandled 500 crash
+        console.error('[Webhook] Unhandled error:', error)
+        return NextResponse.json({ error: 'Internal webhook error' }, { status: 500 })
+    }
 }
