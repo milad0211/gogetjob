@@ -4,6 +4,8 @@ import { createClient } from '@/lib/supabase/client'
 import { useState } from 'react'
 import { Loader2, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
+import { Logo } from '@/components/Logo'
+import { SITE_NAME } from '@/lib/config'
 
 export default function LoginPage() {
     const [isLoading, setIsLoading] = useState(false)
@@ -42,12 +44,12 @@ export default function LoginPage() {
 
             <div className="w-full max-w-md space-y-8 bg-white p-10 rounded-2xl shadow-xl border border-slate-100">
                 <div className="text-center">
-                    <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-2xl mx-auto mb-4">R</div>
+                    <Logo size={48} className="mx-auto mb-4" />
                     <h2 className="text-3xl font-extrabold text-slate-900">
-                        Welcome Back
+                        Welcome to {SITE_NAME}
                     </h2>
                     <p className="mt-2 text-sm text-slate-600">
-                        Sign in to access your dashboard and saved resumes
+                        Sign in to optimize your resume and land your dream job
                     </p>
                 </div>
 
@@ -61,7 +63,7 @@ export default function LoginPage() {
                     <button
                         onClick={handleLogin}
                         disabled={isLoading}
-                        className="group relative w-full flex justify-center py-3 px-4 border border-slate-200 text-sm font-bold rounded-xl text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-70 disabled:cursor-not-allowed transition-all shadow-sm"
+                        className="group relative w-full flex justify-center py-3 px-4 border border-slate-200 text-sm font-bold rounded-xl text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 disabled:opacity-70 disabled:cursor-not-allowed transition-all shadow-sm"
                     >
                         {isLoading ? (
                             <Loader2 className="animate-spin h-5 w-5" />

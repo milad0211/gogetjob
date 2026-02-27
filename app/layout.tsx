@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import NextTopLoader from 'nextjs-toploader';
+import { Analytics } from '@/components/Analytics';
+import { SITE_URL, SITE_NAME, SITE_TAGLINE, SITE_DESCRIPTION } from '@/lib/config';
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,34 +16,37 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://www.resumeai.app'),
+  metadataBase: new URL(SITE_URL),
   title: {
-    default: 'ResumeAI - ATS Resume Optimizer',
-    template: '%s | ResumeAI',
+    default: `${SITE_NAME} — ${SITE_TAGLINE}`,
+    template: `%s | ${SITE_NAME}`,
   },
-  description:
-    'Role-specific resume optimization with ATS scoring, keyword gap analysis, quality checks, and cover letter generation.',
-  applicationName: 'ResumeAI',
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
   alternates: {
     canonical: '/',
   },
   openGraph: {
     type: 'website',
-    siteName: 'ResumeAI',
-    title: 'ResumeAI - ATS Resume Optimizer',
+    siteName: SITE_NAME,
+    title: `${SITE_NAME} — ${SITE_TAGLINE}`,
     description:
-      'Upload your resume, align it with any job description, and export an ATS-focused version with measurable score improvements.',
+      'Upload your resume, paste the job description, and get a role-specific, ATS-optimized version with measurable score improvements. Free to start.',
     url: '/',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'ResumeAI - ATS Resume Optimizer',
+    title: `${SITE_NAME} — ${SITE_TAGLINE}`,
     description:
-      'Optimize every resume for every role with evidence-aware AI rewriting and quality-gated output.',
+      'Turn one resume into job-specific versions that beat ATS filters. See your match score before and after optimization.',
   },
   robots: {
     index: true,
     follow: true,
+  },
+  icons: {
+    icon: '/favicon.svg',
+    apple: '/favicon.svg',
   },
 };
 
@@ -55,8 +60,9 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <NextTopLoader color="#2563eb" showSpinner={false} />
+        <NextTopLoader color="#14b8a6" showSpinner={false} />
         {children}
+        <Analytics />
       </body>
     </html>
   );

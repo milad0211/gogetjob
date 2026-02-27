@@ -26,9 +26,11 @@ import {
   getResumeProMonthlyLimit,
   getResumeProYearlyLimit,
 } from '@/lib/subscription'
+import { SITE_NAME, SITE_TAGLINE, COPYRIGHT_YEAR } from '@/lib/config'
+import { LandingNav } from '@/components/LandingNav'
 
 export const metadata: Metadata = {
-  title: 'ResumeAI - ATS Resume Optimizer for Faster Interview Calls',
+  title: 'GoGetJob — AI Resume Optimizer | Land More Interviews, Faster',
   description:
     'Upload your resume, paste a job description, and get a factual, ATS-focused rewrite with keyword gap analysis, before/after scoring, and downloadable PDF output.',
   keywords: [
@@ -43,16 +45,16 @@ export const metadata: Metadata = {
     canonical: '/',
   },
   openGraph: {
-    title: 'ResumeAI - ATS Resume Optimizer',
+    title: 'GoGetJob — AI Resume Optimizer That Gets You Hired',
     description:
       'Improve resume-job match with AI rewrite, score breakdown, quality checks, and clean PDF export.',
     url: '/',
-    siteName: 'ResumeAI',
+    siteName: 'GoGetJob',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'ResumeAI - ATS Resume Optimizer',
+    title: 'GoGetJob — AI Resume Optimizer That Gets You Hired',
     description:
       'Tailor every resume to each role with quality-gated AI rewrite and measurable score improvement.',
   },
@@ -142,7 +144,7 @@ const faqs = [
   {
     question: 'What makes this different from a generic AI prompt?',
     answer:
-      'ResumeAI is not a single prompt wrapper. It runs parsing, job requirement extraction, gap analysis, rewrite, and a quality gate with safe fallback before returning output.',
+      'GoGetJob is not a single prompt wrapper. It runs parsing, job requirement extraction, gap analysis, rewrite, and a quality gate with safe fallback before returning output.',
   },
   {
     question: 'Does it invent experience or skills?',
@@ -191,7 +193,7 @@ export default function Home() {
   const softwareSchema = {
     '@context': 'https://schema.org',
     '@type': 'SoftwareApplication',
-    name: 'ResumeAI',
+    name: 'GoGetJob',
     applicationCategory: 'BusinessApplication',
     operatingSystem: 'Web',
     description:
@@ -241,52 +243,7 @@ export default function Home() {
       </Script>
 
       <div className="bg-slate-50 text-slate-900">
-        <nav className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/95 backdrop-blur">
-          <div className="mx-auto flex h-20 w-full max-w-7xl items-center justify-between px-6">
-            <Link href="/" className="flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-sm font-bold text-white">
-                R
-              </div>
-              <span className="text-lg font-bold tracking-tight">
-                ResumeAI
-              </span>
-            </Link>
-
-            <div className="hidden items-center gap-7 text-sm font-semibold text-slate-600 md:flex">
-              <a href="#why" className="transition hover:text-slate-900">
-                Why
-              </a>
-              <a href="#how" className="transition hover:text-slate-900">
-                How it works
-              </a>
-              <a href="#testimonials" className="transition hover:text-slate-900">
-                Results
-              </a>
-              <a href="#precision" className="transition hover:text-slate-900">
-                Precision
-              </a>
-              <a href="#pricing" className="transition hover:text-slate-900">
-                Pricing
-              </a>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Link
-                href="/login"
-                className="hidden rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 sm:inline-flex"
-              >
-                Log in
-              </Link>
-              <Link
-                href="/login"
-                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-800"
-              >
-                Start free
-                <ArrowRight size={14} />
-              </Link>
-            </div>
-          </div>
-        </nav>
+        <LandingNav />
 
         <header className="relative overflow-hidden border-b border-slate-200 bg-white">
           <div className="absolute -left-24 -top-20 h-72 w-72 rounded-full bg-teal-200/30 blur-3xl" />
@@ -305,7 +262,7 @@ export default function Home() {
               </h1>
 
               <p className="mt-6 max-w-2xl text-lg leading-relaxed text-slate-600">
-                ResumeAI helps you tailor each resume to each job description with measurable before/after score changes,
+                GoGetJob helps you tailor each resume to each job description with measurable before/after score changes,
                 safer fact handling, and ATS-ready PDF exports.
               </p>
 
@@ -446,7 +403,7 @@ export default function Home() {
               </article>
 
               <article className="rounded-3xl border border-emerald-200 bg-emerald-50 p-6 sm:p-8">
-                <h3 className="text-2xl font-bold text-emerald-900">How ResumeAI fixes it</h3>
+                <h3 className="text-2xl font-bold text-emerald-900">How GoGetJob fixes it</h3>
                 <ul className="mt-5 space-y-3 text-sm leading-relaxed text-emerald-900/90 sm:text-base">
                   <li className="flex items-start gap-2">
                     <CheckCircle size={16} className="mt-0.5 text-emerald-700" />
@@ -563,7 +520,7 @@ export default function Home() {
                   Details that improve accuracy and trust
                 </h2>
                 <p className="mt-4 text-lg leading-relaxed text-slate-300">
-                  Most tools stop at rewrite generation. ResumeAI continues with validation. That is where reliability comes from.
+                  Most tools stop at rewrite generation. GoGetJob continues with validation. That is where reliability comes from.
                 </p>
 
                 <div className="mt-7 grid gap-3 text-sm text-slate-200 sm:grid-cols-2">
@@ -609,7 +566,7 @@ export default function Home() {
                 Positioning in the current market
               </h2>
               <p className="mt-4 text-lg text-slate-600">
-                Many popular tools focus on resume building scale and broad AI assistance. ResumeAI is optimized for
+                Many popular tools focus on resume building scale and broad AI assistance. GoGetJob is optimized for
                 role-specific alignment with factual safety and transparent quality checks.
               </p>
             </div>
@@ -621,7 +578,7 @@ export default function Home() {
                     <th className="px-5 py-4 font-bold">Capability</th>
                     <th className="px-5 py-4 font-bold">Generic builders</th>
                     <th className="px-5 py-4 font-bold">Keyword scanners</th>
-                    <th className="px-5 py-4 font-bold">ResumeAI</th>
+                    <th className="px-5 py-4 font-bold">GoGetJob</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -883,7 +840,7 @@ export default function Home() {
 
         <footer className="border-t border-slate-200 bg-slate-100 py-10">
           <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-6 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
-            <p>© 2026 ResumeAI. All rights reserved.</p>
+            <p>© {COPYRIGHT_YEAR} {SITE_NAME}. All rights reserved.</p>
             <div className="flex flex-wrap gap-4 font-medium">
               <Link href="/privacy-policy" className="hover:text-slate-900">
                 Privacy

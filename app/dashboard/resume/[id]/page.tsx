@@ -69,7 +69,7 @@ export default async function ResumePage({
     return (
         <div className="p-6 max-w-7xl mx-auto min-h-screen flex flex-col">
             {/* Header */}
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                 <Link
                     href="/dashboard"
                     className="flex items-center gap-2 text-slate-500 hover:text-slate-900 transition font-medium"
@@ -77,7 +77,7 @@ export default async function ResumePage({
                     <ArrowLeft size={18} /> Back to Dashboard
                 </Link>
 
-                <div className="flex gap-3 items-center">
+                <div className="flex flex-wrap gap-2 items-center">
                     {metadata && (
                         <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded-md font-mono">
                             Engine v{metadata.engine_version}
@@ -94,22 +94,22 @@ export default async function ResumePage({
 
                     <a
                         href={`/api/pdf/${generation.id}?mode=ats&download=1`}
-                        className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg font-semibold transition text-sm"
+                        className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-2 rounded-lg font-semibold transition text-xs sm:text-sm"
                     >
-                        📄 Download ATS PDF
+                        📄 ATS PDF
                     </a>
                     <a
                         href={`/api/pdf/${generation.id}?mode=premium&download=1`}
-                        className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg font-semibold transition text-sm"
+                        className="bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 rounded-lg font-semibold transition text-xs sm:text-sm"
                     >
-                        ✨ Download Premium PDF
+                        ✨ Premium PDF
                     </a>
                     {(qualityFailed || metadata?.safe_mode_used) && (
                         <a
                             href={`/api/pdf/${generation.id}?mode=ats&safe=1&download=1`}
-                            className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg font-semibold transition text-sm"
+                            className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 rounded-lg font-semibold transition text-xs sm:text-sm"
                         >
-                            🛡 Download Safe ATS PDF
+                            🛡 Safe PDF
                         </a>
                     )}
                 </div>

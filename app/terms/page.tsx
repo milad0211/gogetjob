@@ -1,13 +1,15 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowRight, CheckCircle2, Scale } from 'lucide-react'
+import { Logo } from '@/components/Logo'
+import { SITE_NAME } from '@/lib/config'
 
 const LAST_UPDATED = 'February 25, 2026'
 
 export const metadata: Metadata = {
   title: 'Terms of Service',
   description:
-    'Read the terms that govern access, subscriptions, billing, usage limits, and legal responsibilities for ResumeAI.',
+    'Read the terms that govern access, subscriptions, billing, usage limits, and legal responsibilities for GoGetJob.',
 }
 
 const HIGHLIGHTS = [
@@ -20,7 +22,7 @@ const SECTIONS = [
   {
     id: 'service-scope',
     title: '1. Service Scope',
-    body: 'ResumeAI provides AI-assisted resume optimization, analysis insights, and optional cover letter generation. Product output is assistive and does not guarantee interviews, offers, or employment outcomes.',
+    body: 'GoGetJob provides AI-assisted resume optimization, analysis insights, and optional cover letter generation. Product output is assistive and does not guarantee interviews, offers, or employment outcomes.',
   },
   {
     id: 'account-responsibilities',
@@ -40,12 +42,12 @@ const SECTIONS = [
   {
     id: 'intellectual-property',
     title: '5. Intellectual Property',
-    body: 'You retain rights in your submitted content. The platform software, models, user interface, and related service components remain the property of ResumeAI and its licensors.',
+    body: 'You retain rights in your submitted content. The platform software, models, user interface, and related service components remain the property of GoGetJob and its licensors.',
   },
   {
     id: 'disclaimer-liability',
     title: '6. Disclaimer and Liability',
-    body: 'The service is provided on an as-is basis. To the extent permitted by applicable law, ResumeAI disclaims implied warranties and is not liable for indirect or consequential damages arising from use of the service.',
+    body: 'The service is provided on an as-is basis. To the extent permitted by applicable law, GoGetJob disclaims implied warranties and is not liable for indirect or consequential damages arising from use of the service.',
   },
   {
     id: 'updates',
@@ -57,6 +59,17 @@ const SECTIONS = [
 export default function TermsPage() {
   return (
     <main className="min-h-screen bg-slate-50">
+      {/* Navigation */}
+      <nav className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/95 backdrop-blur px-6 py-4">
+        <div className="mx-auto flex max-w-6xl items-center justify-between">
+          <Link href="/" className="flex items-center gap-2">
+            <Logo size={32} />
+            <span className="text-lg font-bold text-slate-900">{SITE_NAME}</span>
+          </Link>
+          <Link href="/" className="text-sm font-medium text-slate-500 hover:text-slate-900 transition">← Back to Home</Link>
+        </div>
+      </nav>
+
       <section className="relative overflow-hidden border-b border-slate-200 bg-white">
         <div className="absolute -top-24 -right-16 h-64 w-64 rounded-full bg-amber-200/30 blur-3xl" />
         <div className="absolute -bottom-20 -left-16 h-56 w-56 rounded-full bg-teal-200/30 blur-3xl" />

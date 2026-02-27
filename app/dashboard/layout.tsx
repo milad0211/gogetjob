@@ -1,8 +1,11 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { LayoutDashboard, FileText, CreditCard, LogOut, PlusCircle } from 'lucide-react'
+import { LayoutDashboard, FileText, CreditCard, LogOut, PlusCircle, Crown } from 'lucide-react'
 import { hasProAccess } from '@/lib/subscription'
+import { MobileNav } from './_components/MobileNav'
+import { Logo } from '@/components/Logo'
+import { SITE_NAME } from '@/lib/config'
 
 export default async function DashboardLayout({
     children,
@@ -26,15 +29,25 @@ export default async function DashboardLayout({
         .single()
 
     const isPro = hasProAccess(profile)
+    const userName = profile?.full_name || user.email?.split('@')[0] || 'User'
+    const userEmail = user.email || ''
 
     return (
         <div className="flex h-screen bg-slate-50">
-            {/* Sidebar */}
+            {/* ── Mobile Navigation ──────────────────────────── */}
+            <MobileNav
+                isPro={!!isPro}
+                userName={userName}
+                userEmail={userEmail}
+                avatarUrl={profile?.avatar_url || null}
+            />
+
+            {/* ── Desktop Sidebar ───────────────────────────── */}
             <aside className="w-64 bg-white border-r border-slate-200 hidden md:flex flex-col">
                 <div className="p-6">
                     <Link href="/" className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">R</div>
-                        <span className="text-xl font-bold text-slate-900">ResumeAI</span>
+                        <Logo size={32} />
+                        <span className="text-xl font-bold text-slate-900">{SITE_NAME}</span>
                     </Link>
                 </div>
 
@@ -43,7 +56,6 @@ export default async function DashboardLayout({
                         href="/dashboard"
                         className="flex items-center gap-3 px-4 py-3 text-slate-700 rounded-xl hover:bg-slate-50 transition"
                     >
-                        {/* Replaced 'Dashboard' text with 'Home' and LayoutDashboard icon */}
                         <LayoutDashboard size={20} />
                         <span className="font-medium">Home</span>
                     </Link>
@@ -52,7 +64,7 @@ export default async function DashboardLayout({
                         <p className="px-4 text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Create</p>
                         <Link
                             href="/dashboard/generate"
-                            className="flex items-center gap-3 px-4 py-3 text-blue-600 bg-white border border-blue-200 rounded-xl hover:bg-blue-50 transition shadow-sm"
+                            className="flex items-center gap-3 px-4 py-3 text-teal-700 bg-teal-50 border border-teal-200 rounded-xl hover:bg-teal-100 transition shadow-sm"
                         >
                             <PlusCircle size={20} />
                             <span className="font-bold">New Resume</span>
@@ -92,7 +104,7 @@ export default async function DashboardLayout({
                     <div className="flex items-center gap-3 px-4 py-3">
                         <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden flex items-center justify-center">
                             {profile?.avatar_url ? (
-                                <img src={profile.avatar_url} alt="Avatar" />
+                                <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
                             ) : (
                                 <span className="text-slate-500 font-bold">{user.email?.charAt(0).toUpperCase()}</span>
                             )}
@@ -105,6 +117,11 @@ export default async function DashboardLayout({
                                 {isPro ? 'Pro Member' : 'Free Plan'}
                             </p>
                         </div>
+                        {isPro && (
+                            <span className="flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                                <Crown size={10} />
+                            </span>
+                        )}
                     </div>
                     <form action="/auth/signout" method="post">
                         <button className="flex w-full items-center gap-3 px-4 py-2 text-sm text-slate-500 hover:text-red-600 transition">
@@ -115,8 +132,8 @@ export default async function DashboardLayout({
                 </div>
             </aside>
 
-            {/* Main Content */}
-            <main className="flex-1 overflow-y-auto">
+            {/* ── Main Content ───────────────────────────────── */}
+            <main className="flex-1 overflow-y-auto pt-[57px] pb-[70px] md:pt-0 md:pb-0">
                 {children}
             </main>
         </div>
